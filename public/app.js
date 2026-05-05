@@ -180,7 +180,11 @@ document.getElementById('refreshToolsBtn').addEventListener('click', loadTools);
 async function loadTools() {
   toolsGrid.innerHTML = '<div style="color:var(--muted);font-size:0.85rem">Loading…</div>';
   try {
-    const tools = await fetch('/api/tools').then((r) => r.json());
+    const response = await fetch('/api/tools');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} ${response.statusText}`.trim());
+    }
+    const tools = await response.json();
     if (!tools.length) {
       toolsGrid.innerHTML = '<div style="color:var(--muted)">No tools registered.</div>';
       return;
