@@ -131,7 +131,15 @@ function runAgent() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ task })
     })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) {
+          return r.json().then(
+            (d) => Promise.reject(new Error(d.error || r.statusText)),
+            () => Promise.reject(new Error(`${r.status} ${r.statusText}`))
+          );
+        }
+        return r.json();
+      })
       .then((data) => {
         appendLog(data.summary || JSON.stringify(data, null, 2), 'success');
         setStatus('Done');

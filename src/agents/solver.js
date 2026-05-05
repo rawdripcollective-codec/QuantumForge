@@ -43,10 +43,14 @@ async function solve(step, context = {}, llmCall) {
       toolResult = { error: err.message };
     }
 
+    // Use role:'user' to return the tool result.  The custom JSON tool-call
+    // protocol used here is not the native OpenAI function-calling format, so
+    // role:'tool' (which requires a tool_call_id tied to a prior tool_calls
+    // entry) would be rejected by the API.
     const followUp = [
       ...messages,
       { role: 'assistant', content: raw },
-      { role: 'tool', content: JSON.stringify(toolResult) }
+      { role: 'user', content: `Tool "${parsed.toolCall.name}" returned: ${JSON.stringify(toolResult).slice(0, 4096)}` }
     ];
 
     raw = await llmCall(followUp, { model: config.openai.model });

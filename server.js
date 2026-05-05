@@ -137,6 +137,7 @@ wss.on('connection', (ws) => {
         await memory.saveEpisode({ task: msg.task, context: msg.context, result });
         ws.send(JSON.stringify({ type: 'done', result }));
       } catch (err) {
+        await memory.saveMistake({ task: msg.task, context: msg.context, error: err.message });
         ws.send(JSON.stringify({ type: 'error', error: err.message }));
       }
     }
