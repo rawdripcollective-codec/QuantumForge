@@ -41,7 +41,12 @@ async function llmCall(messages, { model, responseFormat } = {}) {
   }
 
   const { OpenAI } = require('openai');
-  const client = new OpenAI({ apiKey, baseURL: config.openai.baseURL });
+  const timeoutMs = Number(config.agents.timeoutMs);
+  const clientOptions = { apiKey, baseURL: config.openai.baseURL };
+  if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    clientOptions.timeout = timeoutMs;
+  }
+  const client = new OpenAI(clientOptions);
 
   const params = { model: model || config.openai.model, messages };
   if (responseFormat === 'json') {
