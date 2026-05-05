@@ -29,8 +29,11 @@ app.get('/health', (_req, res) => {
 // POST /api/agent  { task: string, context?: object }
 app.post('/api/agent', async (req, res) => {
   const { task, context = {} } = req.body || {};
-  if (!task) {
-    return res.status(400).json({ error: 'task is required' });
+  if (typeof task !== 'string' || task.trim() === '') {
+    return res.status(400).json({ error: 'task must be a non-empty string' });
+  }
+  if (context === null || typeof context !== 'object' || Array.isArray(context)) {
+    return res.status(400).json({ error: 'context must be an object' });
   }
   try {
     const result = await kernel.run(task, context);
