@@ -1,0 +1,295 @@
+/* QuantumForge PWA – app.js */
+'use strict';
+
+// ── Service Worker registration ───────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+// ── Tab navigation ────────────────────────────────────────────────────────────
+const navBtns = document.querySelectorAll('nav button');
+navBtns.forEach((btn) => {
+  btn.addEventListener('click', () => {
+    navBtns.forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+    const target = document.getElementById(`panel-${btn.dataset.panel}`);
+    if (target) target.classList.add('active');
+
+    // Lazy-load panel data on first visit
+    if (btn.dataset.panel === 'integrations') loadTools();
+    if (btn.dataset.panel === 'memory') loadMemory();
+    if (btn.dataset.panel === 'self-improve') loadSiStatus();
+  });
+});
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+const wsUrl = `ws://${location.host}`;
+let ws = null;
+const statusDot = document.getElementById('statusDot');
+
+function connectWS() {
+  ws = new WebSocket(wsUrl);
+
+  ws.addEventListener('open', () => {
+    statusDot.classList.add('connected');
+    statusDot.title = 'Connected';
+  });
+
+  ws.addEventListener('close', () => {
+    statusDot.classList.remove('connected');
+    statusDot.title = 'Disconnected – reconnecting…';
+    setTimeout(connectWS, 3000);
+  });
+
+  ws.addEventListener('message', (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      handleWsMessage(msg);
+    } catch {
+      appendLog(ev.data, 'muted');
+    }
+  });
+}
+
+connectWS();
+
+function handleWsMessage(msg) {
+  switch (msg.type) {
+    case 'connected':
+      appendLog(`Gateway connected at ${msg.ts}`, 'info');
+      break;
+    case 'planning':
+      appendLog(`▶ Planning: "${msg.task}"`, 'info');
+      break;
+    case 'steps':
+      appendLog(`  Steps (${msg.steps.length}): ${msg.steps.map((s) => s.action || 'unknown').join(' → ')}`, 'muted');
+      break;
+    case 'solving':
+      appendLog(`  [Round ${msg.round}] Solving step ${msg.step.step}: ${msg.step.action}`, 'info');
+      break;
+    case 'critiquing':
+      appendLog(`  Critiquing step ${msg.step.step}…`, 'muted');
+      break;
+    case 'verdict':
+      appendLog(
+        `  Verdict: ${msg.verdict.pass ? '✓ pass' : '✗ fail'} – ${msg.verdict.feedback}`,
+        msg.verdict.pass ? 'success' : 'warn'
+      );
+      break;
+    case 'done':
+      appendLog('── Done ──', 'success');
+      if (msg.result?.summary) appendLog(msg.result.summary, 'success');
+      setStatus('Done');
+      setRunning(false);
+      break;
+    case 'error':
+      appendLog(`Error: ${msg.error}`, 'error');
+      setStatus('Error');
+      setRunning(false);
+      break;
+    case 'chunk':
+      handleWsMessage(msg); // recurse for nested chunk types
+      break;
+    default:
+      appendLog(JSON.stringify(msg), 'muted');
+  }
+}
+
+// ── Playground ────────────────────────────────────────────────────────────────
+const taskInput = document.getElementById('taskInput');
+const runBtn = document.getElementById('runBtn');
+const clearBtn = document.getElementById('clearBtn');
+const agentLog = document.getElementById('agentLog');
+const statusLabel = document.getElementById('statusLabel');
+
+runBtn.addEventListener('click', runAgent);
+clearBtn.addEventListener('click', () => {
+  agentLog.innerHTML = '<div class="line muted">Agent output will appear here…</div>';
+  setStatus('Ready');
+});
+
+taskInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) runAgent();
+});
+
+function runAgent() {
+  const task = taskInput.value.trim();
+  if (!task) return;
+
+  clearLog();
+  setRunning(true);
+  setStatus('Running…');
+  appendLog(`Task: ${task}`, 'info');
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'agent', task }));
+  } else {
+    // Fallback: REST
+    fetch('/api/agent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task })
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        appendLog(data.summary || JSON.stringify(data, null, 2), 'success');
+        setStatus('Done');
+        setRunning(false);
+      })
+      .catch((err) => {
+        appendLog(`Error: ${err.message}`, 'error');
+        setStatus('Error');
+        setRunning(false);
+      });
+  }
+}
+
+function appendLog(text, cls = '') {
+  const div = document.createElement('div');
+  div.className = `line${cls ? ' ' + cls : ''}`;
+  div.textContent = text;
+  agentLog.appendChild(div);
+  agentLog.scrollTop = agentLog.scrollHeight;
+}
+
+function clearLog() {
+  agentLog.innerHTML = '';
+}
+
+function setRunning(running) {
+  runBtn.disabled = running;
+}
+
+function setStatus(text) {
+  statusLabel.textContent = text;
+}
+
+// ── Integrations ──────────────────────────────────────────────────────────────
+const toolsGrid = document.getElementById('toolsGrid');
+document.getElementById('refreshToolsBtn').addEventListener('click', loadTools);
+
+async function loadTools() {
+  toolsGrid.innerHTML = '<div style="color:var(--muted);font-size:0.85rem">Loading…</div>';
+  try {
+    const tools = await fetch('/api/tools').then((r) => r.json());
+    if (!tools.length) {
+      toolsGrid.innerHTML = '<div style="color:var(--muted)">No tools registered.</div>';
+      return;
+    }
+    toolsGrid.innerHTML = '';
+    tools.forEach((t) => {
+      const card = document.createElement('div');
+      card.className = 'tool-card';
+      card.innerHTML = `
+        <h3>${esc(t.name)}</h3>
+        <p>${esc(t.description || 'No description')}</p>
+        <button class="tool-test-btn" data-tool="${esc(t.name)}">Test ↗</button>
+      `;
+      card.querySelector('.tool-test-btn').addEventListener('click', () => testTool(t.name));
+      toolsGrid.appendChild(card);
+    });
+  } catch (err) {
+    toolsGrid.innerHTML = `<div style="color:#ff7b72">Failed to load tools: ${esc(err.message)}</div>`;
+  }
+}
+
+async function testTool(name) {
+  const args = {};
+  if (name === 'fs.read') args.path = './README.md';
+  if (name === 'fs.list') args.path = '.';
+  if (name === 'memory.get') args.key = 'test';
+
+  try {
+    const res = await fetch(`/api/tools/${encodeURIComponent(name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ args })
+    }).then((r) => r.json());
+    alert(`Tool "${name}" result:\n${JSON.stringify(res.result, null, 2)}`);
+  } catch (err) {
+    alert(`Tool "${name}" error: ${err.message}`);
+  }
+}
+
+// ── Memory ────────────────────────────────────────────────────────────────────
+document.getElementById('refreshMemoryBtn').addEventListener('click', loadMemory);
+
+async function loadMemory() {
+  try {
+    const data = await fetch('/api/memory').then((r) => r.json());
+
+    const epsTbody = document.querySelector('#episodesTable tbody');
+    epsTbody.innerHTML = '';
+    (data.episodes || []).slice(-20).reverse().forEach((ep) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${esc(ep.ts?.slice(0, 19).replace('T', ' ') || '')}</td>
+        <td>${esc((ep.task || '').slice(0, 60))}</td>
+        <td>${esc((ep.result?.summary || '').slice(0, 80))}</td>
+      `;
+      epsTbody.appendChild(tr);
+    });
+
+    const misTbody = document.querySelector('#mistakesTable tbody');
+    misTbody.innerHTML = '';
+    (data.mistakes || []).slice(-20).reverse().forEach((m) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${esc(m.ts?.slice(0, 19).replace('T', ' ') || '')}</td>
+        <td>${esc((m.task || '').slice(0, 60))}</td>
+        <td style="color:#ff7b72">${esc((m.error || '').slice(0, 80))}</td>
+      `;
+      misTbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('Failed to load memory:', err);
+  }
+}
+
+// ── Self-Improve ──────────────────────────────────────────────────────────────
+document.getElementById('siRunBtn').addEventListener('click', async () => {
+  document.getElementById('siRunBtn').disabled = true;
+  try {
+    const report = await fetch('/api/self-improve/run', { method: 'POST' }).then((r) => r.json());
+    renderSiReport(report);
+  } catch (err) {
+    alert('Self-improve error: ' + err.message);
+  } finally {
+    document.getElementById('siRunBtn').disabled = false;
+  }
+});
+
+async function loadSiStatus() {
+  try {
+    const s = await fetch('/api/self-improve/status').then((r) => r.json());
+    document.getElementById('siSchedule').textContent = `Schedule: ${s.schedule}`;
+    document.getElementById('siLastRun').textContent = `Last run: ${s.lastRun || 'never'}`;
+    if (s.lastReport) renderSiReport(s.lastReport);
+  } catch {
+    // silent
+  }
+}
+
+function renderSiReport(report) {
+  const list = document.getElementById('insightList');
+  if (!report?.insights?.length) {
+    list.innerHTML = '<li style="color:var(--muted)">No insights found.</li>';
+    return;
+  }
+  list.innerHTML = '';
+  report.insights.forEach((ins) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span style="color:var(--warn)">[${esc(ins.type)}]</span> <span class="lesson">${esc(ins.lesson)}</span>`;
+    list.appendChild(li);
+  });
+}
+
+// ── Util ──────────────────────────────────────────────────────────────────────
+function esc(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}

@@ -1,0 +1,53 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Critic Agent",
+    "version": "1.0.0",
+    "description": "Reviews the Solver's output and decides whether to accept or retry."
+  },
+  "paths": {
+    "/api/agent": {
+      "post": {
+        "operationId": "criticRun",
+        "summary": "Evaluate a solver result",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["step", "solverResult"],
+                "properties": {
+                  "step": {
+                    "type": "object",
+                    "properties": {
+                      "step": { "type": "integer" },
+                      "action": { "type": "string" }
+                    }
+                  },
+                  "solverResult": { "type": "object" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Critic verdict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "pass": { "type": "boolean" },
+                    "feedback": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

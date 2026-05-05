@@ -1,0 +1,134 @@
+/**
+ * MCP Fabric – tool registry and dispatcher.
+ * Provides integration points via a named tool registry.
+ * Tools can be registered programmatically or loaded from the registry file.
+ *
+ * Built-in fs tools are restricted to the project root to prevent path traversal.
+ */
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const config = require('../../config/default.json');
+
+const registryPath = path.resolve(config.mcp.registryPath);
+
+// Safe root for file-system tools: restrict all fs operations to the project dir
+const FS_SAFE_ROOT = path.resolve('.');
+
+/** Resolve a user-supplied path and assert it stays within FS_SAFE_ROOT. */
+function safePath(userPath) {
+  const resolved = path.resolve(userPath);
+  const relative = path.relative(FS_SAFE_ROOT, resolved);
+  // relative starts with '..' when the path escapes the safe root
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`Access denied: path is outside the allowed directory (${FS_SAFE_ROOT})`);
+  }
+  return resolved;
+}
+
+const _tools = new Map();
+
+function ensureRegistry() {
+  if (!fs.existsSync(registryPath)) {
+    fs.mkdirSync(path.dirname(registryPath), { recursive: true });
+    fs.writeFileSync(registryPath, JSON.stringify([], null, 2));
+  }
+}
+
+/** Register a tool programmatically. */
+function register(name, { description, schema, handler }) {
+  if (typeof handler !== 'function') throw new Error(`handler for "${name}" must be a function`);
+  _tools.set(name, { name, description, schema: schema || {}, handler });
+}
+
+/** Load persisted tool definitions from registry file (handler = null for external tools). */
+function loadRegistry() {
+  ensureRegistry();
+  try {
+    const defs = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    for (const def of defs) {
+      if (!_tools.has(def.name)) {
+        _tools.set(def.name, { ...def, handler: null });
+      }
+    }
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      console.warn('[mcp/fabric] Could not load registry (possibly malformed):', err.message);
+    }
+    // File missing is fine – start with an empty registry
+  }
+}
+
+/** Persist the current registry (non-handler entries) to disk. */
+function saveRegistry() {
+  ensureRegistry();
+  const defs = [..._tools.values()].map(({ name, description, schema }) => ({ name, description, schema }));
+  fs.writeFileSync(registryPath, JSON.stringify(defs, null, 2));
+}
+
+/** List all registered tools (metadata only). */
+function listTools() {
+  return [..._tools.values()].map(({ name, description, schema }) => ({ name, description, schema }));
+}
+
+/** Invoke a tool by name with args. */
+async function invoke(name, args = {}) {
+  const tool = _tools.get(name);
+  if (!tool) throw new Error(`Unknown tool: ${name}`);
+  if (!tool.handler) throw new Error(`Tool "${name}" has no local handler (external MCP server)`);
+  return tool.handler(args);
+}
+
+// ── Built-in tools ─────────────────────────────────────────────────────────────
+
+register('fs.read', {
+  description: 'Read a file from the local filesystem (restricted to project directory).',
+  schema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+  handler: ({ path: p }) => fs.readFileSync(safePath(p), 'utf8')
+});
+
+register('fs.write', {
+  description: 'Write content to a local file (restricted to project directory).',
+  schema: {
+    type: 'object',
+    properties: { path: { type: 'string' }, content: { type: 'string' } },
+    required: ['path', 'content']
+  },
+  handler: ({ path: p, content }) => {
+    const resolved = safePath(p);
+    fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    fs.writeFileSync(resolved, content, 'utf8');
+    return { written: true };
+  }
+});
+
+register('fs.list', {
+  description: 'List files in a directory (restricted to project directory).',
+  schema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+  handler: ({ path: p }) => fs.readdirSync(safePath(p))
+});
+
+register('memory.set', {
+  description: 'Store a key-value pair in persistent memory.',
+  schema: {
+    type: 'object',
+    properties: { key: { type: 'string' }, value: {} },
+    required: ['key', 'value']
+  },
+  handler: ({ key, value }) => {
+    require('../memory').set(key, value);
+    return { stored: true };
+  }
+});
+
+register('memory.get', {
+  description: 'Retrieve a value from persistent memory.',
+  schema: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] },
+  handler: ({ key }) => require('../memory').get(key)
+});
+
+loadRegistry();
+
+module.exports = { register, listTools, invoke, loadRegistry, saveRegistry };

@@ -1,0 +1,64 @@
+/**
+ * Solver agent – executes a single step, optionally invoking MCP tools.
+ */
+
+'use strict';
+
+const config = require('../../config/default.json');
+const mcpFabric = require('../mcp/fabric');
+
+const SYSTEM = `You are the Solver agent in the QuantumForge multi-agent system.
+Execute the given step and return the result as a JSON object: {"result": "...", "toolsUsed": [...]}.
+If you need to call a tool, emit: {"toolCall": {"name": "...", "args": {...}}}.
+Available tools: {{TOOLS}}`;
+
+async function solve(step, context = {}, llmCall) {
+  const tools = mcpFabric.listTools();
+  const toolsDesc = tools.map((t) => `${t.name}: ${t.description}`).join('\n');
+  const system = SYSTEM.replace('{{TOOLS}}', toolsDesc || 'none');
+
+  const messages = [
+    { role: 'system', content: system },
+    {
+      role: 'user',
+      content: `Step: ${JSON.stringify(step)}\nContext: ${JSON.stringify(context)}`
+    }
+  ];
+
+  let raw = await llmCall(messages, { model: config.openai.model });
+  let parsed;
+
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = { result: raw, toolsUsed: [] };
+  }
+
+  // If the LLM requested a tool call, execute it and feed result back
+  if (parsed.toolCall) {
+    let toolResult;
+    try {
+      toolResult = await mcpFabric.invoke(parsed.toolCall.name, parsed.toolCall.args || {});
+    } catch (err) {
+      toolResult = { error: err.message };
+    }
+
+    const followUp = [
+      ...messages,
+      { role: 'assistant', content: raw },
+      { role: 'tool', content: JSON.stringify(toolResult) }
+    ];
+
+    raw = await llmCall(followUp, { model: config.openai.model });
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = { result: raw, toolsUsed: [parsed.toolCall.name] };
+    }
+    parsed.toolsUsed = parsed.toolsUsed || [parsed.toolCall?.name].filter(Boolean);
+  }
+
+  return parsed;
+}
+
+module.exports = { solve };

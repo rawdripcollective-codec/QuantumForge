@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuantumForge</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#58a6ff" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0d1117;
+      --surface:  #161b22;
+      --border:   #30363d;
+      --accent:   #58a6ff;
+      --accent2:  #3fb950;
+      --warn:     #f0883e;
+      --text:     #c9d1d9;
+      --muted:    #8b949e;
+      --radius:   8px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    header h1 { font-size: 1.2rem; color: var(--accent); letter-spacing: 0.05em; }
+    header .badge {
+      font-size: 0.7rem;
+      background: var(--accent);
+      color: #000;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-weight: 700;
+    }
+    header .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      margin-left: auto;
+      transition: background .3s;
+    }
+    header .status-dot.connected { background: var(--accent2); }
+
+    nav {
+      display: flex;
+      gap: 0;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    nav button {
+      background: none;
+      border: none;
+      color: var(--muted);
+      padding: 10px 18px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      border-bottom: 2px solid transparent;
+      transition: color .2s, border-color .2s;
+    }
+    nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+    nav button:hover  { color: var(--text); }
+
+    main { flex: 1; padding: 20px; max-width: 960px; width: 100%; margin: 0 auto; }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* ── Playground ──────────────────────────────────────────────── */
+    .playground textarea {
+      width: 100%;
+      min-height: 90px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      resize: vertical;
+    }
+
+    .playground .row { display: flex; gap: 10px; margin-top: 10px; align-items: center; }
+
+    button.primary {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: var(--radius);
+      padding: 8px 20px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: opacity .2s;
+    }
+    button.primary:disabled { opacity: 0.5; cursor: default; }
+
+    button.secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    .log {
+      margin-top: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.83rem;
+      min-height: 140px;
+      max-height: 480px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .log .line { margin-bottom: 4px; }
+    .log .line.info    { color: var(--accent); }
+    .log .line.success { color: var(--accent2); }
+    .log .line.warn    { color: var(--warn); }
+    .log .line.error   { color: #ff7b72; }
+    .log .line.muted   { color: var(--muted); }
+
+    /* ── Integrations ────────────────────────────────────────────── */
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .tool-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+
+    .tool-card h3 { font-size: 0.95rem; color: var(--accent); margin-bottom: 4px; }
+    .tool-card p  { font-size: 0.8rem; color: var(--muted); }
+
+    .tool-test-btn {
+      margin-top: 10px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 4px 12px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .tool-test-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Memory ──────────────────────────────────────────────────── */
+    .memory-section { margin-top: 16px; }
+    .memory-section h2 { font-size: 1rem; color: var(--muted); margin-bottom: 8px; }
+
+    .memory-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    .memory-table th, .memory-table td {
+      text-align: left;
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .memory-table th { color: var(--muted); font-weight: 600; }
+    .memory-table td { color: var(--text); }
+
+    /* ── Self-Improve ────────────────────────────────────────────── */
+    .si-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .si-card h3 { margin-bottom: 8px; color: var(--accent); }
+    .si-card p  { font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
+
+    .insight-list { list-style: none; margin-top: 10px; }
+    .insight-list li {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 8px 12px;
+      margin-bottom: 6px;
+      font-size: 0.82rem;
+    }
+    .insight-list li .lesson { color: var(--accent2); }
+
+    /* ── Scrollbar ───────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚡ QuantumForge</h1>
+    <span class="badge">v1.0</span>
+    <span class="status-dot" id="statusDot" title="WebSocket status"></span>
+  </header>
+
+  <nav>
+    <button class="active" data-panel="playground">Playground</button>
+    <button data-panel="integrations">Integrations</button>
+    <button data-panel="memory">Memory</button>
+    <button data-panel="self-improve">Self-Improve</button>
+  </nav>
+
+  <main>
+    <!-- Playground -->
+    <section class="panel active" id="panel-playground">
+      <div class="playground">
+        <textarea id="taskInput" placeholder="Describe your task… e.g. 'Write a Python script to parse CSV files'"></textarea>
+        <div class="row">
+          <button class="primary" id="runBtn">Run Agent</button>
+          <button class="secondary" id="clearBtn">Clear</button>
+          <span id="statusLabel" style="margin-left:auto;font-size:0.82rem;color:var(--muted)">Ready</span>
+        </div>
+        <div class="log" id="agentLog">
+          <div class="line muted">Agent output will appear here…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Integrations -->
+    <section class="panel" id="panel-integrations">
+      <h2 style="margin-bottom:10px;font-size:1.1rem">MCP Tool Registry</h2>
+      <button class="secondary" id="refreshToolsBtn" style="margin-bottom:4px">↻ Refresh</button>
+      <div class="tools-grid" id="toolsGrid">
+        <div style="color:var(--muted);font-size:0.85rem">Loading tools…</div>
+      </div>
+    </section>
+
+    <!-- Memory -->
+    <section class="panel" id="panel-memory">
+      <button class="secondary" id="refreshMemoryBtn" style="margin-bottom:12px">↻ Refresh</button>
+
+      <div class="memory-section">
+        <h2>Recent Episodes</h2>
+        <table class="memory-table" id="episodesTable">
+          <thead><tr><th>Time</th><th>Task</th><th>Summary</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="memory-section" style="margin-top:24px">
+        <h2>Mistakes</h2>
+        <table class="memory-table" id="mistakesTable">
+          <thead><tr><th>Time</th><th>Task</th><th>Error</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Self-Improve -->
+    <section class="panel" id="panel-self-improve">
+      <div class="si-card" id="siStatusCard">
+        <h3>Self-Improvement Engine</h3>
+        <p id="siSchedule">Schedule: —</p>
+        <p id="siLastRun">Last run: —</p>
+        <button class="primary" id="siRunBtn" style="margin-top:10px">Run Now</button>
+      </div>
+
+      <h2 style="margin-bottom:8px;font-size:1rem;color:var(--muted)">Latest Insights</h2>
+      <ul class="insight-list" id="insightList">
+        <li style="color:var(--muted)">No insights yet — run the self-improvement cycle.</li>
+      </ul>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

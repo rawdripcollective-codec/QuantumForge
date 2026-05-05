@@ -1,0 +1,50 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Planner Agent",
+    "version": "1.0.0",
+    "description": "Decomposes a high-level task into an ordered list of atomic steps."
+  },
+  "paths": {
+    "/api/agent": {
+      "post": {
+        "operationId": "plannerRun",
+        "summary": "Decompose a task into steps",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["task"],
+                "properties": {
+                  "task": { "type": "string", "description": "High-level task description" },
+                  "context": { "type": "object", "description": "Optional context / facts" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Array of ordered steps",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "step": { "type": "integer" },
+                      "action": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
