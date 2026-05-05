@@ -18,6 +18,8 @@ const registryPath = path.resolve(config.mcp.registryPath);
 // Use realpathSync so that a symlinked project directory is handled correctly.
 const FS_SAFE_ROOT = (() => {
   try { return fs.realpathSync(path.resolve('.')); } catch { return path.resolve('.'); }
+  // realpathSync can only fail here if the CWD itself is missing, which is
+  // an OS-level anomaly; the lexical fallback is safe for that edge case.
 })();
 
 /** Resolve a user-supplied path and assert it stays within FS_SAFE_ROOT.
@@ -41,7 +43,7 @@ function safePath(userPath) {
       const parent = fs.realpathSync(path.dirname(resolved));
       real = path.join(parent, path.basename(resolved));
     } catch {
-      // Neither the path nor its direct parent exist yet – the lexical check above
+      // Neither the path nor its direct parent exist yet - the lexical check above
       // is sufficient for non-existent paths (no symlink to follow).
     }
   }

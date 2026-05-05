@@ -29,7 +29,7 @@ async function critique(step, solverResult, llmCall) {
       throw new Error('Critic response is missing the required boolean field: pass');
     }
   } catch (err) {
-    throw new Error(`Critic returned an unparsable response: ${err.message}`);
+    throw new Error(`Critic returned an unparsable response: ${err.message}. Raw: ${String(raw).substring(0, 120)}`);
   }
 
   return verdict;
