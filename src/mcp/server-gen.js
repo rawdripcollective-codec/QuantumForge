@@ -40,8 +40,12 @@ function generate(name, tools) {
     description: ${JSON.stringify(t.description || '')},
     schema: ${schemaStr},
     handler: async (args) => {
-      // TODO: implement handler
-      throw new Error(${toolNameLiteral} + ' not implemented');
+      return {
+        ok: false,
+        tool: ${toolNameLiteral},
+        message: ${toolNameLiteral} + ' has not been customized yet. Replace this generated handler with a real implementation.',
+        args: args || {}
+      };
     }
   }`;
   });
