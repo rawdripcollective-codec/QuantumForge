@@ -1,4 +1,4 @@
-# ByPass – QuantumForge
+# QuantumForge
 
 **QuantumForge** is a locally-hosted super-agent combining full-stack dev, AI orchestration, and self-improving workflows into a Termux/Android powerhouse.
 
@@ -37,8 +37,8 @@ pkg install nodejs   # Termux
 # or: apt install nodejs npm   # proot Ubuntu
 
 # 2. Clone and install
-git clone https://github.com/rawdripcollective-codec/ByPass
-cd ByPass
+git clone https://github.com/rawdripcollective-codec/QuantumForge
+cd QuantumForge
 npm install
 
 # 3. (Optional) Set your OpenAI key for real LLM responses
