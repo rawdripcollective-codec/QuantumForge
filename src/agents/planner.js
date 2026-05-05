@@ -20,7 +20,7 @@ async function plan(task, context = {}, llmCall) {
     }
   ];
 
-  const raw = await llmCall(messages, { model: config.openai.model, responseFormat: 'json' });
+  const raw = await llmCall(messages, { model: config.openai.model });
 
   let steps;
   try {
