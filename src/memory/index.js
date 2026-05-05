@@ -22,13 +22,19 @@ function ensureFile(p, init) {
 }
 
 function readJSON(p) {
+  let raw;
   try {
-    return JSON.parse(fs.readFileSync(p, 'utf8'));
+    raw = fs.readFileSync(p, 'utf8');
   } catch (err) {
-    if (err.code !== 'ENOENT') {
-      console.warn(`[memory] Could not parse ${p}:`, err.message);
-    }
-    return null;
+    if (err.code === 'ENOENT') return null;
+    throw new Error(`[memory] Could not read ${p}: ${err.message}`);
+  }
+  // Separate the parse step so a corrupted file throws rather than silently
+  // returning null and letting callers overwrite all prior history.
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`[memory] Corrupted JSON in ${p}: ${err.message}`);
   }
 }
 

@@ -20,9 +20,10 @@ function sanitizeName(name) {
 
 /**
  * Generate a MCP server definition and write it to disk.
- * @param {string} name  – server identifier
- * @param {Array}  tools – array of { name, description, schema } objects
- * @returns {{ name, path, tools }}
+ * @param {string} name  - server identifier
+ * @param {Array}  tools - array of { name, description, schema } objects
+ * @returns {{ name, path, tools, status }}
+ *   status is always 'scaffold' – handlers throw until the caller fills them in.
  */
 function generate(name, tools) {
   const safeName = sanitizeName(name);
@@ -61,7 +62,7 @@ ${toolsSource.join(',\n')}
 
   fs.writeFileSync(outPath, source, 'utf8');
 
-  return { name: safeName, path: outPath, tools: tools.map((t) => t.name) };
+  return { name: safeName, path: outPath, tools: tools.map((t) => t.name), status: 'scaffold' };
 }
 
 module.exports = { generate };
