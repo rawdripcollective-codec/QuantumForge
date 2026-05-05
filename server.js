@@ -138,14 +138,23 @@ wss.on('connection', (ws) => {
         return;
       }
 
+      let context = {};
+      if (msg.context !== undefined) {
+        if (typeof msg.context !== 'object' || msg.context === null || Array.isArray(msg.context)) {
+          ws.send(JSON.stringify({ type: 'error', error: 'context must be an object' }));
+          return;
+        }
+        context = msg.context;
+      }
+
       try {
-        const result = await kernel.run(msg.task, msg.context || {}, (chunk) => {
+        const result = await kernel.run(msg.task, context, (chunk) => {
           ws.send(JSON.stringify({ type: 'chunk', ...chunk }));
         });
-        await memory.saveEpisode({ task: msg.task, context: msg.context, result });
+        await memory.saveEpisode({ task: msg.task, context, result });
         ws.send(JSON.stringify({ type: 'done', result }));
       } catch (err) {
-        await memory.saveMistake({ task: msg.task, context: msg.context, error: err.message });
+        await memory.saveMistake({ task: msg.task, context, error: err.message });
         ws.send(JSON.stringify({ type: 'error', error: err.message }));
       }
     }
