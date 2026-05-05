@@ -94,6 +94,9 @@ async function run(task, context = {}, onChunk = null) {
       }
     }
 
+    // Clear per-step feedback so it doesn't bleed into subsequent steps
+    delete enriched.criticFeedback;
+
     results.push({ step, result: solverResult, rounds: round, accepted: verdict.pass });
   }
 

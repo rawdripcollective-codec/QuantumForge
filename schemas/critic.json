@@ -1,51 +1,36 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Critic Agent",
+    "title": "Critic Agent (internal)",
     "version": "1.0.0",
-    "description": "Reviews the Solver's output and decides whether to accept or retry."
+    "description": "Internal component: reviews the Solver's output and decides whether to accept or retry. Invoked by the kernel; not directly accessible via HTTP."
   },
-  "paths": {
-    "/api/agent": {
-      "post": {
-        "operationId": "criticRun",
-        "summary": "Evaluate a solver result",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["step", "solverResult"],
-                "properties": {
-                  "step": {
-                    "type": "object",
-                    "properties": {
-                      "step": { "type": "integer" },
-                      "action": { "type": "string" }
-                    }
-                  },
-                  "solverResult": { "type": "object" }
-                }
-              }
+  "components": {
+    "schemas": {
+      "CriticInput": {
+        "type": "object",
+        "required": ["step", "solverResult"],
+        "properties": {
+          "step": {
+            "type": "object",
+            "description": "Step object produced by the Planner",
+            "properties": {
+              "step": { "type": "integer" },
+              "action": { "type": "string" }
             }
+          },
+          "solverResult": {
+            "type": "object",
+            "description": "Output from the Solver for this step"
           }
-        },
-        "responses": {
-          "200": {
-            "description": "Critic verdict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "pass": { "type": "boolean" },
-                    "feedback": { "type": "string" }
-                  }
-                }
-              }
-            }
-          }
+        }
+      },
+      "CriticOutput": {
+        "type": "object",
+        "required": ["pass"],
+        "properties": {
+          "pass": { "type": "boolean", "description": "Whether the solver result is acceptable" },
+          "feedback": { "type": "string", "description": "Brief reason for the verdict" }
         }
       }
     }

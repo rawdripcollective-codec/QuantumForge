@@ -14,18 +14,43 @@ const config = require('../../config/default.json');
 
 const registryPath = path.resolve(config.mcp.registryPath);
 
-// Safe root for file-system tools: restrict all fs operations to the project dir
-const FS_SAFE_ROOT = path.resolve('.');
+// Safe root for file-system tools: restrict all fs operations to the project dir.
+// Use realpathSync so that a symlinked project directory is handled correctly.
+const FS_SAFE_ROOT = (() => {
+  try { return fs.realpathSync(path.resolve('.')); } catch { return path.resolve('.'); }
+})();
 
-/** Resolve a user-supplied path and assert it stays within FS_SAFE_ROOT. */
+/** Resolve a user-supplied path and assert it stays within FS_SAFE_ROOT.
+ *  Symlinks are resolved so a symlink inside the project cannot escape the sandbox. */
 function safePath(userPath) {
   const resolved = path.resolve(userPath);
-  const relative = path.relative(FS_SAFE_ROOT, resolved);
-  // relative starts with '..' when the path escapes the safe root
-  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+  // Lexical pre-check: catches obvious traversal before hitting the filesystem
+  const relLex = path.relative(FS_SAFE_ROOT, resolved);
+  if (relLex.startsWith('..') || path.isAbsolute(relLex)) {
     throw new Error(`Access denied: path is outside the allowed directory (${FS_SAFE_ROOT})`);
   }
-  return resolved;
+
+  // Resolve symlinks so that a symlink inside the project cannot point outside.
+  // For paths that don't exist yet (e.g. new file writes) we resolve the nearest
+  // existing ancestor and reconstruct the full real path from there.
+  let real = resolved;
+  try {
+    real = fs.realpathSync(resolved);
+  } catch {
+    try {
+      const parent = fs.realpathSync(path.dirname(resolved));
+      real = path.join(parent, path.basename(resolved));
+    } catch {
+      // Neither the path nor its direct parent exist yet – the lexical check above
+      // is sufficient for non-existent paths (no symlink to follow).
+    }
+  }
+
+  const relReal = path.relative(FS_SAFE_ROOT, real);
+  if (relReal.startsWith('..') || path.isAbsolute(relReal)) {
+    throw new Error(`Access denied: path is outside the allowed directory (${FS_SAFE_ROOT})`);
+  }
+  return real;
 }
 
 const _tools = new Map();

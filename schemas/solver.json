@@ -1,53 +1,35 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Solver Agent",
+    "title": "Solver Agent (internal)",
     "version": "1.0.0",
-    "description": "Executes a single step, optionally invoking MCP tools."
+    "description": "Internal component: executes a single step, optionally invoking MCP tools. Invoked by the kernel; not directly accessible via HTTP."
   },
-  "paths": {
-    "/api/agent": {
-      "post": {
-        "operationId": "solverRun",
-        "summary": "Execute a step",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["step"],
-                "properties": {
-                  "step": {
-                    "type": "object",
-                    "properties": {
-                      "step": { "type": "integer" },
-                      "action": { "type": "string" }
-                    }
-                  },
-                  "context": { "type": "object" }
-                }
-              }
+  "components": {
+    "schemas": {
+      "SolverInput": {
+        "type": "object",
+        "required": ["step"],
+        "properties": {
+          "step": {
+            "type": "object",
+            "description": "Step object produced by the Planner",
+            "properties": {
+              "step": { "type": "integer" },
+              "action": { "type": "string" }
             }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Solver result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "result": { "type": "string" },
-                    "toolsUsed": {
-                      "type": "array",
-                      "items": { "type": "string" }
-                    }
-                  }
-                }
-              }
-            }
+          },
+          "context": { "type": "object", "description": "Enriched execution context" }
+        }
+      },
+      "SolverOutput": {
+        "type": "object",
+        "properties": {
+          "result": { "type": "string", "description": "Result of executing the step" },
+          "toolsUsed": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Names of MCP tools invoked"
           }
         }
       }

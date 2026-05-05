@@ -18,6 +18,9 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  // Never cache API/control-plane responses – always fetch live data for them
+  // so memory and self-improvement dashboards are never stale offline.
+  if (new URL(e.request.url).pathname.startsWith('/api/')) return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {

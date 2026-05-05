@@ -26,11 +26,10 @@ async function critique(step, solverResult, llmCall) {
   try {
     verdict = JSON.parse(raw);
     if (typeof verdict.pass !== 'boolean') {
-      console.warn('[critic] Response missing required boolean field: pass; defaulting to pass=true');
-      verdict = { pass: true, feedback: 'Could not parse critic response; accepting.' };
+      throw new Error('Critic response is missing the required boolean field: pass');
     }
-  } catch {
-    verdict = { pass: true, feedback: 'Could not parse critic response; accepting.' };
+  } catch (err) {
+    throw new Error(`Critic returned an unparsable response: ${err.message}`);
   }
 
   return verdict;
