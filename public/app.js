@@ -209,11 +209,21 @@ async function testTool(name) {
   if (name === 'memory.get') args.key = 'test';
 
   try {
-    const res = await fetch(`/api/tools/${encodeURIComponent(name)}`, {
+    const response = await fetch(`/api/tools/${encodeURIComponent(name)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ args })
-    }).then((r) => r.json());
+    });
+    const res = await response.json();
+
+    if (!response.ok) {
+      throw new Error(res.error || res.message || `Request failed with status ${response.status}`);
+    }
+
+    if (!('result' in res)) {
+      throw new Error('Tool response did not include a result.');
+    }
+
     alert(`Tool "${name}" result:\n${JSON.stringify(res.result, null, 2)}`);
   } catch (err) {
     alert(`Tool "${name}" error: ${err.message}`);
