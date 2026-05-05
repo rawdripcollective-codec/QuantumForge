@@ -273,7 +273,11 @@ async function loadMemory() {
 document.getElementById('siRunBtn').addEventListener('click', async () => {
   document.getElementById('siRunBtn').disabled = true;
   try {
-    const report = await fetch('/api/self-improve/run', { method: 'POST' }).then((r) => r.json());
+    const response = await fetch('/api/self-improve/run', { method: 'POST' });
+    const report = await response.json();
+    if (!response.ok) {
+      throw new Error(report?.error || `Failed to run self-improve: HTTP ${response.status}`);
+    }
     renderSiReport(report);
   } catch (err) {
     alert('Self-improve error: ' + err.message);
