@@ -94,8 +94,28 @@ app.post('/api/self-improve/run', async (_req, res) => {
 });
 
 // ── HTTP + WebSocket server ───────────────────────────────────────────────────
+const { host, port } = config.gateway;
+
+// Allowed browser origins for WebSocket upgrades.
+// A remote page cannot spoof the Origin header, so this prevents cross-origin
+// drive-by access to the local agent/file-system tools.
+const ALLOWED_WS_ORIGINS = new Set([
+  `http://127.0.0.1:${port}`,
+  `http://localhost:${port}`,
+]);
+
+// verifyClient is called before the WebSocket handshake is completed.
+// Requests with no Origin (CLI tools, wscat, etc.) are allowed.
+// Requests from any other origin are rejected with 403.
+function verifyWsClient(info) {
+  const { origin } = info;
+  if (!origin) return true;
+  if (ALLOWED_WS_ORIGINS.has(origin)) return true;
+  return { result: false, code: 403, message: 'Forbidden' };
+}
+
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 }); // 64 KB max message
+const wss = new WebSocketServer({ server, maxPayload: 64 * 1024, verifyClient: verifyWsClient });
 
 wss.on('connection', (ws) => {
   ws.send(JSON.stringify({ type: 'connected', ts: new Date().toISOString() }));
@@ -123,7 +143,6 @@ wss.on('connection', (ws) => {
   });
 });
 
-const { host, port } = config.gateway;
 server.listen(port, host, () => {
   console.log(`QuantumForge gateway listening on http://${host}:${port}`);
   selfImprove.start();
