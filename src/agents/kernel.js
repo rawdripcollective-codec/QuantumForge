@@ -23,11 +23,20 @@ const MAX_ROUNDS = config.agents.maxRounds;
 async function llmCall(messages, { model, responseFormat } = {}) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    // Offline stub: echo the last user message wrapped in expected JSON
+    // Offline stub: return a shape that matches the calling agent contract.
     const last = messages[messages.length - 1]?.content || '';
+    const promptText = messages.map((m) => String(m?.content || '')).join('\n').toLowerCase();
+
     if (responseFormat === 'json') {
-      return JSON.stringify([{ step: 1, action: last }]);
+      if (/\bcritic\b|\bcritique\b|\breview\b|\bverdict\b|\bpass\b|\bfeedback\b/.test(promptText)) {
+        return JSON.stringify({ pass: true, feedback: '' });
+      }
+      if (/\bplanner\b|\bplan\b|\bsteps?\b|\baction\b/.test(promptText)) {
+        return JSON.stringify([{ step: 1, action: last }]);
+      }
+      return JSON.stringify({ result: `[offline] ${last}`, toolsUsed: [] });
     }
+
     return JSON.stringify({ result: `[offline] ${last}`, toolsUsed: [] });
   }
 
