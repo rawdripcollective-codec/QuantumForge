@@ -133,6 +133,11 @@ wss.on('connection', (ws) => {
     }
 
     if (msg.type === 'agent') {
+      if (typeof msg.task !== 'string' || msg.task.trim() === '') {
+        ws.send(JSON.stringify({ type: 'error', error: 'task is required' }));
+        return;
+      }
+
       try {
         const result = await kernel.run(msg.task, msg.context || {}, (chunk) => {
           ws.send(JSON.stringify({ type: 'chunk', ...chunk }));
