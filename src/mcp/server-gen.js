@@ -33,13 +33,14 @@ function generate(name, tools) {
     const schemaStr = JSON.stringify(t.schema || {}, null, 4)
       .split('\n')
       .join('\n    ');
+    const toolNameLiteral = JSON.stringify(String(t.name));
     return `  {
-    name: ${JSON.stringify(t.name)},
+    name: ${toolNameLiteral},
     description: ${JSON.stringify(t.description || '')},
     schema: ${schemaStr},
     handler: async (args) => {
-      // TODO: implement ${t.name}
-      throw new Error('${t.name} not implemented');
+      // TODO: implement handler
+      throw new Error(${toolNameLiteral} + ' not implemented');
     }
   }`;
   });
