@@ -7,7 +7,7 @@
 ## Architecture
 
 ```
-Interface (PWA/Slack)
+Interface (PWA/Web)
         ↓
   Agent Kernel  ──── Planner → Solver → Critic pipeline
         ↓
