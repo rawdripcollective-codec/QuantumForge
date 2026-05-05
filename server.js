@@ -79,7 +79,11 @@ app.post('/api/mcp/gen', async (req, res) => {
 
 // ── Memory / episodes ─────────────────────────────────────────────────────────
 app.get('/api/memory', async (_req, res) => {
-  res.json(await memory.getAll());
+  try {
+    res.json(await memory.getAll());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Self-improve status ───────────────────────────────────────────────────────
