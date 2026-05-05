@@ -8,7 +8,6 @@
     "timeoutMs": 30000
   },
   "mcp": {
-    "autoGenServers": true,
     "registryPath": "./data/mcp-registry.json"
   },
   "memory": {
