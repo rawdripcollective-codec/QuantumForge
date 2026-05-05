@@ -284,12 +284,16 @@ document.getElementById('siRunBtn').addEventListener('click', async () => {
 
 async function loadSiStatus() {
   try {
-    const s = await fetch('/api/self-improve/status').then((r) => r.json());
+    const response = await fetch('/api/self-improve/status');
+    if (!response.ok) {
+      throw new Error(`Failed to load self-improve status: HTTP ${response.status}`);
+    }
+    const s = await response.json();
     document.getElementById('siSchedule').textContent = `Schedule: ${s.schedule}`;
     document.getElementById('siLastRun').textContent = `Last run: ${s.lastRun || 'never'}`;
     if (s.lastReport) renderSiReport(s.lastReport);
-  } catch {
-    // silent
+  } catch (err) {
+    console.error('Failed to load self-improve status:', err);
   }
 }
 
