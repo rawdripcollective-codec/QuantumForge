@@ -25,8 +25,8 @@ async function withSelfImproveHarness(fn) {
     });
 
     try {
-      const selfImprove = freshRequire(selfImproveModulePath, [memoryModulePath]);
-      const memory = require(memoryModulePath);
+      const memory = freshRequire(memoryModulePath, [memoryModulePath, selfImproveModulePath]);
+      const selfImprove = freshRequire(selfImproveModulePath);
       await fn({ selfImprove, memory, scheduled, wasStopped: () => stopCalled });
     } finally {
       restoreCron();
