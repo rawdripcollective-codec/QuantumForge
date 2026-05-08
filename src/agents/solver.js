@@ -60,7 +60,8 @@ async function solve(step, context = {}, llmCall) {
     } catch {
       parsed = { result: raw, toolsUsed: [toolName] };
     }
-    parsed.toolsUsed = parsed.toolsUsed || [toolName].filter(Boolean);
+    const existingToolsUsed = Array.isArray(parsed.toolsUsed) ? parsed.toolsUsed : [];
+    parsed.toolsUsed = [...new Set([...existingToolsUsed, toolName].filter(Boolean))];
   }
 
   return parsed;
