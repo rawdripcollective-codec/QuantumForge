@@ -18,12 +18,12 @@ const os = require('node:os');
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Create a fresh temporary directory for one test suite. */
-function makeTmpDir() {
+function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'qforge-mem-test-'));
 }
 
 /** Remove a directory tree (cleanup). */
-function rmTmpDir(dir) {
+function removeTempDir(dir) {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
@@ -70,11 +70,11 @@ describe('memory – key/value store', () => {
   let mem;
 
   before(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = makeTempDir();
     mem = loadMemory(tmpDir);
   });
 
-  after(() => rmTmpDir(tmpDir));
+  after(() => removeTempDir(tmpDir));
 
   it('set and get a value', () => {
     mem.set('color', 'blue');
@@ -105,11 +105,11 @@ describe('memory – episodes', () => {
   let mem;
 
   before(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = makeTempDir();
     mem = loadMemory(tmpDir);
   });
 
-  after(() => rmTmpDir(tmpDir));
+  after(() => removeTempDir(tmpDir));
 
   it('saveEpisode stores an episode with a timestamp', () => {
     mem.saveEpisode({ task: 'do something', result: { summary: 'done' } });
@@ -145,11 +145,11 @@ describe('memory – mistakes', () => {
   let mem;
 
   before(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = makeTempDir();
     mem = loadMemory(tmpDir);
   });
 
-  after(() => rmTmpDir(tmpDir));
+  after(() => removeTempDir(tmpDir));
 
   it('saveMistake stores a mistake with a timestamp', () => {
     mem.saveMistake({ task: 'bad task', error: 'something went wrong' });
@@ -175,11 +175,11 @@ describe('memory – getAll', () => {
   let mem;
 
   before(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = makeTempDir();
     mem = loadMemory(tmpDir);
   });
 
-  after(() => rmTmpDir(tmpDir));
+  after(() => removeTempDir(tmpDir));
 
   it('returns memory, episodes, and mistakes objects', () => {
     mem.set('x', 42);

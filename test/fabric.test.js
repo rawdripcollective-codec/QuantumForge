@@ -16,11 +16,11 @@ const os = require('node:os');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeTmpDir() {
+function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'qforge-fabric-test-'));
 }
 
-function rmTmpDir(dir) {
+function removeTempDir(dir) {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
@@ -125,11 +125,11 @@ describe('fabric – fs tools', () => {
   let fabric;
 
   before(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = makeTempDir();
     fabric = loadFabric(tmpDir);
   });
 
-  after(() => rmTmpDir(tmpDir));
+  after(() => removeTempDir(tmpDir));
 
   it('fs.write writes a file', async () => {
     await fabric.invoke('fs.write', { path: path.join(tmpDir, 'hello.txt'), content: 'hello world' });
@@ -187,11 +187,11 @@ describe('fabric – memory tools', () => {
   let fabric;
 
   before(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = makeTempDir();
     fabric = loadFabric(tmpDir);
   });
 
-  after(() => rmTmpDir(tmpDir));
+  after(() => removeTempDir(tmpDir));
 
   it('memory.set stores a value', async () => {
     const result = await fabric.invoke('memory.set', { key: 'foo', value: 'bar' });

@@ -71,7 +71,9 @@ async function llmCall(messages, { model, responseFormat } = {}) {
  */
 async function runStep(step, baseContext, emit) {
   // Each step gets its own mutable context copy so parallel steps don't
-  // overwrite each other's criticFeedback.
+  // overwrite each other's criticFeedback.  The scratchpad value is a plain
+  // object snapshot (Object.fromEntries) created in run(); steps only read
+  // it, never mutate it, so a shallow spread is sufficient here.
   const stepContext = { ...baseContext };
 
   let solverResult = null;

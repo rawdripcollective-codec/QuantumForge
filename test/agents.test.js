@@ -15,11 +15,11 @@ const os = require('node:os');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function makeTmpDir() {
+function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'qforge-agents-test-'));
 }
 
-function rmTmpDir(dir) {
+function removeTempDir(dir) {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
@@ -93,11 +93,11 @@ describe('planner', () => {
   let planner;
 
   before(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = makeTempDir();
     ({ planner } = loadAgentModules(tmpDir));
   });
 
-  after(() => rmTmpDir(tmpDir));
+  after(() => removeTempDir(tmpDir));
 
   it('plan returns an array of steps', async () => {
     // The offline stub in llmCall returns a single-step array for planner prompts
@@ -138,11 +138,11 @@ describe('critic', () => {
   let critic;
 
   before(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = makeTempDir();
     ({ critic } = loadAgentModules(tmpDir));
   });
 
-  after(() => rmTmpDir(tmpDir));
+  after(() => removeTempDir(tmpDir));
 
   it('critique returns a verdict with pass and feedback', async () => {
     const verdict = await critic.critique(
@@ -184,11 +184,11 @@ describe('solver', () => {
   let solver;
 
   before(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = makeTempDir();
     ({ solver } = loadAgentModules(tmpDir));
   });
 
-  after(() => rmTmpDir(tmpDir));
+  after(() => removeTempDir(tmpDir));
 
   it('solve returns a result object with toolsUsed array', async () => {
     const result = await solver.solve(
@@ -255,11 +255,11 @@ describe('kernel – run (offline)', () => {
   let kernel;
 
   before(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = makeTempDir();
     ({ kernel } = loadAgentModules(tmpDir));
   });
 
-  after(() => rmTmpDir(tmpDir));
+  after(() => removeTempDir(tmpDir));
 
   it('run returns steps, results, and summary', async () => {
     const output = await kernel.run('say hello offline');
@@ -294,11 +294,11 @@ describe('kernel – parallel step execution', () => {
   let kernel;
 
   before(() => {
-    tmpDir = makeTmpDir();
+    tmpDir = makeTempDir();
     ({ kernel } = loadAgentModules(tmpDir));
   });
 
-  after(() => rmTmpDir(tmpDir));
+  after(() => removeTempDir(tmpDir));
 
   it('independent steps (no dependsOn) all complete', async () => {
     // Inject a custom planner that returns two independent steps

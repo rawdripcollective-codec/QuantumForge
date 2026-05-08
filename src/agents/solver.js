@@ -34,7 +34,7 @@ async function solve(step, context = {}, llmCall) {
   let toolRound = 0;
 
   // ReAct loop: reason → act (tool call) → observe → repeat until done or limit hit
-  while (toolRound <= maxToolRounds) {
+  while (toolRound < maxToolRounds) {
     const raw = await llmCall(messages, { model: config.openai.model });
 
     try {
