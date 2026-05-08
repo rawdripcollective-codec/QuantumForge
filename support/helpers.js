@@ -11,7 +11,7 @@ function withTempCwd(fn) {
   const shouldRestoreCwd = () => {
     try {
       const relative = path.relative(tempDir, process.cwd());
-      return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+      return relative === '' || !relative.startsWith('..');
     } catch {
       return true;
     }
