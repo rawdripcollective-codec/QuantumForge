@@ -188,7 +188,12 @@ register('http.fetch', {
 
     // Fallback: built-in https / http modules
     return new Promise((resolve, reject) => {
-      const protocol = url.startsWith('https') ? require('https') : require('http');
+      let protocol;
+      try {
+        protocol = new URL(url).protocol === 'https:' ? require('https') : require('http');
+      } catch {
+        return reject(new Error(`http.fetch: invalid URL "${url}"`));
+      }
       const timer = setTimeout(() => reject(new Error('http.fetch timeout')), timeoutMs);
       const req = protocol.get(url, (res) => {
         let data = '';
@@ -275,6 +280,9 @@ register('shell.exec', {
     const allowed = Array.isArray(config.tools.shell.allowedCommands)
       ? config.tools.shell.allowedCommands
       : [];
+    if (!allowed.length) {
+      console.warn('[shell.exec] allowedCommands is empty or misconfigured; all commands will be rejected');
+    }
     if (!allowed.includes(command)) {
       throw new Error(`"${command}" is not in the allowed-commands list: [${allowed.join(', ')}]`);
     }

@@ -141,8 +141,11 @@ async function run(task, context = {}, onChunk = null) {
 
     if (!ready.length) {
       // Dependency deadlock (e.g. malformed plan) – force the first pending step
-      console.warn('[kernel] Step dependency deadlock; forcing sequential execution');
-      ready.push(remaining[0]);
+      const stuck = remaining[0];
+      console.warn(
+        `[kernel] Step dependency deadlock: step ${stuck.step} depends on [${(stuck.dependsOn || []).join(', ')}] but not all are satisfied; forcing sequential execution`
+      );
+      ready.push(stuck);
     }
 
     // Remove ready steps from the pending list

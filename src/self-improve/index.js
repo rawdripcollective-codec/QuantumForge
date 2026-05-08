@@ -7,6 +7,7 @@
 'use strict';
 
 const cron = require('node-cron');
+const { OpenAI } = require('openai');
 const config = require('../../config/default.json');
 const memory = require('../memory');
 
@@ -62,7 +63,6 @@ function ruleBasedAnalysis(mistakes, episodes) {
 // ── LLM-based analysis (requires OPENAI_API_KEY) ──────────────────────────────
 
 async function llmAnalysis(mistakes, episodes) {
-  const { OpenAI } = require('openai');
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: config.openai.baseURL });
 
   const mistakesSummary = mistakes.slice(-10).map((m) => ({

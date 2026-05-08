@@ -66,7 +66,7 @@ function handleWsMessage(msg) {
       appendLog(`  Steps (${msg.steps.length}): ${msg.steps.map((s) => s.action || 'unknown').join(' → ')}`, 'muted');
       break;
     case 'parallel':
-      appendLog(`  ⚡ Parallel: ${(msg.steps || []).map((s) => `[${s.step}] ${s.action || ''}`.trim()).join(' + ')}`, 'info');
+      appendLog(`  ⚡ Parallel: ${(msg.steps || []).map((s) => `[${s.step}] ${s.action || ''}`).join(' + ').trim()}`, 'info');
       break;
     case 'solving':
       appendLog(`  [Round ${msg.round}] Solving step ${msg.step.step}: ${msg.step.action}`, 'info');
