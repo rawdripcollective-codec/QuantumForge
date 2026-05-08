@@ -58,6 +58,8 @@ npm test
 npm run test:coverage
 ```
 
+> Note: `npm run test:coverage` depends on Node.js coverage support. If you are using an older Node.js release, the coverage command may not work; use a current Node.js version when running coverage.
+
 The current automated suite focuses on core local logic:
 
 - memory persistence and corruption handling
