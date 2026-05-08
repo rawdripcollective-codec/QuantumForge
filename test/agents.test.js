@@ -20,17 +20,12 @@ function loadSolverModules() {
 }
 
 function loadKernelModules() {
-  const kernel = freshRequire(kernelModulePath, [
-    plannerModulePath,
-    solverModulePath,
-    criticModulePath,
-    memoryModulePath,
-    fabricModulePath
-  ]);
-  const planner = require(plannerModulePath);
-  const solver = require(solverModulePath);
-  const critic = require(criticModulePath);
-  const memory = require(memoryModulePath);
+  const planner = freshRequire(plannerModulePath);
+  const critic = freshRequire(criticModulePath);
+  const memory = freshRequire(memoryModulePath);
+  freshRequire(fabricModulePath);
+  const solver = freshRequire(solverModulePath, [fabricModulePath]);
+  const kernel = freshRequire(kernelModulePath);
   return { kernel, planner, solver, critic, memory };
 }
 
