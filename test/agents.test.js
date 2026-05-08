@@ -14,8 +14,8 @@ const memoryModulePath = path.join(__dirname, '..', 'src', 'memory', 'index.js')
 const fabricModulePath = path.join(__dirname, '..', 'src', 'mcp', 'fabric.js');
 
 function loadSolverModules() {
-  const fabric = freshRequire(fabricModulePath);
   const solver = freshRequire(solverModulePath, [fabricModulePath]);
+  const fabric = require(fabricModulePath);
   return { fabric, solver };
 }
 
