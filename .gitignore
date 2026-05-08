@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+data/memory.json
+data/episodes.json
+data/mistakes.json
+data/mcp-registry.json
+data/mcp-servers/
+*.log
+.DS_Store

@@ -1,0 +1,29 @@
+{
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 18789
+  },
+  "agents": {
+    "maxRounds": 5,
+    "timeoutMs": 30000
+  },
+  "mcp": {
+    "registryPath": "./data/mcp-registry.json"
+  },
+  "memory": {
+    "path": "./data/memory.json",
+    "episodesPath": "./data/episodes.json",
+    "mistakesPath": "./data/mistakes.json",
+    "maxEpisodes": 1000
+  },
+  "selfImprove": {
+    "cronSchedule": "0 * * * *",
+    "enabled": true,
+    "recurringErrorThreshold": 2,
+    "frequentTaskThreshold": 3
+  },
+  "openai": {
+    "model": "gpt-4o",
+    "baseURL": "https://api.openai.com/v1"
+  }
+}

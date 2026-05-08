@@ -1,0 +1,38 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Critic Agent (internal)",
+    "version": "1.0.0",
+    "description": "Internal component: reviews the Solver's output and decides whether to accept or retry. Invoked by the kernel; not directly accessible via HTTP."
+  },
+  "components": {
+    "schemas": {
+      "CriticInput": {
+        "type": "object",
+        "required": ["step", "solverResult"],
+        "properties": {
+          "step": {
+            "type": "object",
+            "description": "Step object produced by the Planner",
+            "properties": {
+              "step": { "type": "integer" },
+              "action": { "type": "string" }
+            }
+          },
+          "solverResult": {
+            "type": "object",
+            "description": "Output from the Solver for this step"
+          }
+        }
+      },
+      "CriticOutput": {
+        "type": "object",
+        "required": ["pass"],
+        "properties": {
+          "pass": { "type": "boolean", "description": "Whether the solver result is acceptable" },
+          "feedback": { "type": "string", "description": "Brief reason for the verdict" }
+        }
+      }
+    }
+  }
+}

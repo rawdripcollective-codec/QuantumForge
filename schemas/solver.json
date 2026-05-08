@@ -1,0 +1,38 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Solver Agent (internal)",
+    "version": "1.0.0",
+    "description": "Internal component: executes a single step, optionally invoking MCP tools. Invoked by the kernel; not directly accessible via HTTP."
+  },
+  "components": {
+    "schemas": {
+      "SolverInput": {
+        "type": "object",
+        "required": ["step"],
+        "properties": {
+          "step": {
+            "type": "object",
+            "description": "Step object produced by the Planner",
+            "properties": {
+              "step": { "type": "integer" },
+              "action": { "type": "string" }
+            }
+          },
+          "context": { "type": "object", "description": "Enriched execution context" }
+        }
+      },
+      "SolverOutput": {
+        "type": "object",
+        "properties": {
+          "result": { "type": "string", "description": "Result of executing the step" },
+          "toolsUsed": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Names of MCP tools invoked"
+          }
+        }
+      }
+    }
+  }
+}
