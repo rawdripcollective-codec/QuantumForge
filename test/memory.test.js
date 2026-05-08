@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const { withTempCwd, freshRequire } = require('./helpers');
+const { withTempCwd, freshRequire } = require('../support/helpers');
 
 const memoryModulePath = path.join(__dirname, '..', 'src', 'memory', 'index.js');
 

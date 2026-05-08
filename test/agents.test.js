@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
 
-const { freshRequire } = require('./helpers');
+const { freshRequire } = require('../support/helpers');
 
 const plannerModulePath = path.join(__dirname, '..', 'src', 'agents', 'planner.js');
 const solverModulePath = path.join(__dirname, '..', 'src', 'agents', 'solver.js');
@@ -147,5 +147,31 @@ test('kernel retries failed steps, threads critic feedback, and emits progress c
     planner.plan = original.plan;
     solver.solve = original.solve;
     critic.critique = original.critique;
+  }
+});
+
+test('kernel offline mode uses the built-in stub pipeline without an API key', async () => {
+  const kernel = freshRequire(kernelModulePath);
+  const memory = require(memoryModulePath);
+  const originalRecentEpisodes = memory.recentEpisodes;
+  const originalApiKey = process.env.OPENAI_API_KEY;
+
+  memory.recentEpisodes = () => [];
+  delete process.env.OPENAI_API_KEY;
+
+  try {
+    const result = await kernel.run('draft release notes');
+
+    assert.deepEqual(result.steps, [{ step: 1, action: 'draft release notes' }]);
+    assert.equal(result.results.length, 1);
+    assert.equal(result.results[0].accepted, true);
+    assert.match(result.results[0].result.result, /^\[offline\]/);
+  } finally {
+    memory.recentEpisodes = originalRecentEpisodes;
+    if (originalApiKey === undefined) {
+      delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = originalApiKey;
+    }
   }
 });

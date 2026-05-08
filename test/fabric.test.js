@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { withTempCwd, freshRequire } = require('./helpers');
+const { withTempCwd, freshRequire } = require('../support/helpers');
 
 const fabricModulePath = path.join(__dirname, '..', 'src', 'mcp', 'fabric.js');
 

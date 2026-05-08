@@ -4,14 +4,30 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
 
-const { freshRequire, stubModule } = require('./helpers');
+const { freshRequire, stubModule } = require('../support/helpers');
 
 const memoryModulePath = path.join(__dirname, '..', 'src', 'memory', 'index.js');
 const selfImproveModulePath = path.join(__dirname, '..', 'src', 'self-improve', 'index.js');
+const scheduled = [];
+let stopCalled = false;
+const restoreCron = stubModule('node-cron', {
+  schedule(expression, fn) {
+    scheduled.push({ expression, fn });
+    return {
+      stop() {
+        stopCalled = true;
+      }
+    };
+  }
+});
+const selfImprove = freshRequire(selfImproveModulePath);
+const memory = require(memoryModulePath);
+
+test.after(() => {
+  restoreCron();
+});
 
 test('self-improve generates insights, persists them, and updates status', async () => {
-  const selfImprove = freshRequire(selfImproveModulePath);
-  const memory = require(memoryModulePath);
   const original = {
     recentMistakes: memory.recentMistakes,
     recentEpisodes: memory.recentEpisodes,
@@ -58,32 +74,34 @@ test('self-improve generates insights, persists them, and updates status', async
 });
 
 test('self-improve start and stop manage the cron scheduler lifecycle', () => {
-  let stopCalled = false;
-  const scheduled = [];
-  const restoreCron = stubModule('node-cron', {
-    schedule(expression, fn) {
-      scheduled.push({ expression, fn });
-      return {
-        stop() {
-          stopCalled = true;
-        }
-      };
-    }
-  });
+  selfImprove.start();
+  assert.equal(scheduled.length, 1);
+  assert.equal(scheduled[0].expression, '0 * * * *');
+  assert.equal(typeof scheduled[0].fn, 'function');
+  assert.equal(selfImprove.status().running, true);
+
+  selfImprove.stop();
+  assert.equal(stopCalled, true);
+  assert.equal(selfImprove.status().running, false);
+});
+
+test('self-improve logs scheduler callback errors without throwing', async () => {
+  const error = console.error;
+  const logs = [];
+  const originalRecentMistakes = memory.recentMistakes;
+
+  console.error = (...args) => logs.push(args.join(' '));
+  memory.recentMistakes = () => {
+    throw new Error('cron failure');
+  };
 
   try {
-    const selfImprove = freshRequire(selfImproveModulePath);
-
     selfImprove.start();
-    assert.equal(scheduled.length, 1);
-    assert.equal(scheduled[0].expression, '0 * * * *');
-    assert.equal(typeof scheduled[0].fn, 'function');
-    assert.equal(selfImprove.status().running, true);
-
-    selfImprove.stop();
-    assert.equal(stopCalled, true);
-    assert.equal(selfImprove.status().running, false);
+    await scheduled[scheduled.length - 1].fn();
+    assert.equal(logs.some((entry) => entry.includes('[self-improve] error: cron failure')), true);
   } finally {
-    restoreCron();
+    memory.recentMistakes = originalRecentMistakes;
+    console.error = error;
+    selfImprove.stop();
   }
 });
