@@ -23,20 +23,22 @@ test('fabric built-in tools support sandboxed read, write, list, and memory acce
     assert.deepEqual(await fabric.invoke('memory.get', { key: 'mode' }), { offline: true });
 
     const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'quantumforge-outside-'));
-    const outsideFile = path.join(outsideDir, 'secret.txt');
-    fs.writeFileSync(outsideFile, 'nope', 'utf8');
-    fs.symlinkSync(outsideFile, path.join(cwd, 'nested', 'escape-link'));
+    try {
+      const outsideFile = path.join(outsideDir, 'secret.txt');
+      fs.writeFileSync(outsideFile, 'nope', 'utf8');
+      fs.symlinkSync(outsideFile, path.join(cwd, 'nested', 'escape-link'));
 
-    await assert.rejects(
-      fabric.invoke('fs.read', { path: '../secret.txt' }),
-      /Access denied/
-    );
-    await assert.rejects(
-      fabric.invoke('fs.read', { path: 'nested/escape-link' }),
-      /Access denied/
-    );
-
-    fs.rmSync(outsideDir, { recursive: true, force: true });
+      await assert.rejects(
+        fabric.invoke('fs.read', { path: '../secret.txt' }),
+        /Access denied/
+      );
+      await assert.rejects(
+        fabric.invoke('fs.read', { path: 'nested/escape-link' }),
+        /Access denied/
+      );
+    } finally {
+      fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
   });
 });
 
