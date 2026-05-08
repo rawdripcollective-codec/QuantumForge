@@ -1,0 +1,65 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+
+const { withTempCwd, freshRequire } = require('./helpers');
+
+const memoryModulePath = path.join(__dirname, '..', 'src', 'memory', 'index.js');
+
+test('memory initializes storage files and persists key-value data', () => {
+  withTempCwd((cwd) => {
+    const memory = freshRequire(memoryModulePath);
+    const dataDir = path.join(cwd, 'data');
+
+    assert.equal(fs.existsSync(path.join(dataDir, 'memory.json')), true);
+    assert.equal(fs.existsSync(path.join(dataDir, 'episodes.json')), true);
+    assert.equal(fs.existsSync(path.join(dataDir, 'mistakes.json')), true);
+
+    memory.set('profile', { language: 'js', count: 2 });
+
+    assert.deepEqual(memory.get('profile'), { language: 'js', count: 2 });
+    assert.deepEqual(memory.getAll().memory, { profile: { language: 'js', count: 2 } });
+
+    const reloaded = freshRequire(memoryModulePath);
+    assert.deepEqual(reloaded.get('profile'), { language: 'js', count: 2 });
+  });
+});
+
+test('memory rotates old episodes and returns recent history', () => {
+  withTempCwd(() => {
+    const memory = freshRequire(memoryModulePath);
+
+    for (let i = 0; i < 1002; i++) {
+      memory.saveEpisode({ task: `task-${i}`, result: { index: i } });
+    }
+
+    memory.saveMistake({ task: 'broken-task', error: 'boom' });
+
+    const all = memory.getAll();
+    assert.equal(all.episodes.length, 1000);
+    assert.equal(all.episodes[0].task, 'task-2');
+    assert.match(all.episodes[0].ts, /\d{4}-\d{2}-\d{2}T/);
+    assert.deepEqual(
+      memory.recentEpisodes(2).map((episode) => episode.task),
+      ['task-1000', 'task-1001']
+    );
+    assert.equal(all.mistakes.length, 1);
+    assert.equal(memory.recentMistakes(1)[0].error, 'boom');
+  });
+});
+
+test('memory surfaces corrupted JSON and tolerates missing files', () => {
+  withTempCwd((cwd) => {
+    const memory = freshRequire(memoryModulePath);
+    const memoryPath = path.join(cwd, 'data', 'memory.json');
+
+    fs.writeFileSync(memoryPath, '{broken json', 'utf8');
+    assert.throws(() => memory.get('anything'), /Corrupted JSON/);
+
+    fs.rmSync(memoryPath);
+    assert.equal(memory.get('anything'), undefined);
+  });
+});
