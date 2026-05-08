@@ -13,6 +13,27 @@ const kernelModulePath = path.join(__dirname, '..', 'src', 'agents', 'kernel.js'
 const memoryModulePath = path.join(__dirname, '..', 'src', 'memory', 'index.js');
 const fabricModulePath = path.join(__dirname, '..', 'src', 'mcp', 'fabric.js');
 
+function loadSolverModules() {
+  const fabric = freshRequire(fabricModulePath);
+  const solver = freshRequire(solverModulePath, [fabricModulePath]);
+  return { fabric, solver };
+}
+
+function loadKernelModules() {
+  const kernel = freshRequire(kernelModulePath, [
+    plannerModulePath,
+    solverModulePath,
+    criticModulePath,
+    memoryModulePath,
+    fabricModulePath
+  ]);
+  const planner = require(plannerModulePath);
+  const solver = require(solverModulePath);
+  const critic = require(criticModulePath);
+  const memory = require(memoryModulePath);
+  return { kernel, planner, solver, critic, memory };
+}
+
 test('planner falls back to a single step when the LLM response is invalid', async () => {
   await withTempCwd(async () => {
     const planner = freshRequire(plannerModulePath);
@@ -36,8 +57,7 @@ test('planner falls back to a single step when the LLM response is invalid', asy
 
 test('solver handles raw responses and tool-call follow-up flows', async () => {
   await withTempCwd(async () => {
-    const solver = freshRequire(solverModulePath, [fabricModulePath]);
-    const fabric = require(fabricModulePath);
+    const { solver, fabric } = loadSolverModules();
     const original = { listTools: fabric.listTools, invoke: fabric.invoke };
 
     fabric.listTools = () => [{ name: 'demo.echo', description: 'Echo a payload' }];
@@ -107,17 +127,7 @@ test('critic validates parsed verdicts and rejects malformed responses', async (
 
 test('kernel retries failed steps, threads critic feedback, and emits progress chunks', async () => {
   await withTempCwd(async () => {
-    const kernel = freshRequire(kernelModulePath, [
-      plannerModulePath,
-      solverModulePath,
-      criticModulePath,
-      memoryModulePath,
-      fabricModulePath
-    ]);
-    const planner = require(plannerModulePath);
-    const solver = require(solverModulePath);
-    const critic = require(criticModulePath);
-    const memory = require(memoryModulePath);
+    const { kernel, planner, solver, critic, memory } = loadKernelModules();
     const original = {
       recentEpisodes: memory.recentEpisodes,
       plan: planner.plan,
@@ -184,14 +194,7 @@ test('kernel retries failed steps, threads critic feedback, and emits progress c
 
 test('kernel offline mode uses the built-in stub pipeline without an API key', async () => {
   await withTempCwd(async () => {
-    const kernel = freshRequire(kernelModulePath, [
-      plannerModulePath,
-      solverModulePath,
-      criticModulePath,
-      memoryModulePath,
-      fabricModulePath
-    ]);
-    const memory = require(memoryModulePath);
+    const { kernel, memory } = loadKernelModules();
     const originalRecentEpisodes = memory.recentEpisodes;
     const originalApiKey = process.env.OPENAI_API_KEY;
 
