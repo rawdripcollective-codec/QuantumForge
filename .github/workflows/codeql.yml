@@ -13,9 +13,9 @@ name: "CodeQL Advanced"
 
 on:
   push:
-    branches: [ "copilot/bootstrap-extend-openclaw-install" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "copilot/bootstrap-extend-openclaw-install" ]
+    branches: [ "main" ]
   schedule:
     - cron: '45 3 * * 0'
 
