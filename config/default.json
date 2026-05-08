@@ -23,7 +23,7 @@
     "frequentTaskThreshold": 3
   },
   "openrouter": {
-    "model": "openai/gpt-4o",
+    "model": "minimax/minimax-m2.5:free",
     "baseURL": "https://openrouter.ai/api/v1"
   },
   "huggingface": {
