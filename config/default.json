@@ -5,6 +5,7 @@
   },
   "agents": {
     "maxRounds": 5,
+    "maxToolRounds": 10,
     "timeoutMs": 30000
   },
   "mcp": {
@@ -25,5 +26,17 @@
   "openai": {
     "model": "gpt-4o",
     "baseURL": "https://api.openai.com/v1"
+  },
+  "tools": {
+    "http": {
+      "enabled": true,
+      "timeoutMs": 10000,
+      "maxResponseBytes": 32768
+    },
+    "shell": {
+      "enabled": false,
+      "timeoutMs": 10000,
+      "allowedCommands": ["ls", "cat", "pwd", "echo", "node", "python3", "git"]
+    }
   }
 }

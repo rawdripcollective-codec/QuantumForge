@@ -156,6 +156,147 @@ register('memory.get', {
   handler: ({ key }) => require('../memory').get(key)
 });
 
+// ── http.fetch ─────────────────────────────────────────────────────────────────
+register('http.fetch', {
+  description: 'Fetch content from a URL via GET. Returns status code and trimmed response body.',
+  schema: {
+    type: 'object',
+    properties: {
+      url: { type: 'string', description: 'The URL to fetch.' }
+    },
+    required: ['url']
+  },
+  handler: async ({ url }) => {
+    if (!config.tools?.http?.enabled) {
+      throw new Error('http.fetch is disabled (set config.tools.http.enabled = true)');
+    }
+    const timeoutMs = config.tools.http.timeoutMs || 10000;
+    const maxBytes = config.tools.http.maxResponseBytes || 32768;
+
+    // Use global fetch when available (Node 18+), otherwise fall back to built-in modules
+    if (typeof globalThis.fetch === 'function') {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await globalThis.fetch(url, { signal: controller.signal });
+        const text = await res.text();
+        return { status: res.status, body: text.slice(0, maxBytes) };
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    // Fallback: built-in https / http modules
+    return new Promise((resolve, reject) => {
+      const protocol = url.startsWith('https') ? require('https') : require('http');
+      const timer = setTimeout(() => reject(new Error('http.fetch timeout')), timeoutMs);
+      const req = protocol.get(url, (res) => {
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+          if (data.length > maxBytes) {
+            data = data.slice(0, maxBytes);
+            req.destroy();
+          }
+        });
+        res.on('end', () => {
+          clearTimeout(timer);
+          resolve({ status: res.statusCode, body: data });
+        });
+      });
+      req.on('error', (err) => { clearTimeout(timer); reject(err); });
+    });
+  }
+});
+
+// ── memory.search ──────────────────────────────────────────────────────────────
+register('memory.search', {
+  description: 'Keyword search over recent memory episodes and mistakes.',
+  schema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Search keyword or phrase.' }
+    },
+    required: ['query']
+  },
+  handler: ({ query }) => {
+    const mem = require('../memory');
+    const q = String(query).toLowerCase();
+    const episodes = mem.recentEpisodes(100)
+      .filter((e) =>
+        (e.task || '').toLowerCase().includes(q) ||
+        (e.result?.summary || '').toLowerCase().includes(q)
+      )
+      .slice(-10);
+    const mistakes = mem.recentMistakes(100)
+      .filter((m) =>
+        (m.task || '').toLowerCase().includes(q) ||
+        (m.error || '').toLowerCase().includes(q)
+      )
+      .slice(-10);
+    return { episodes, mistakes, count: episodes.length + mistakes.length };
+  }
+});
+
+// ── fs.append ──────────────────────────────────────────────────────────────────
+register('fs.append', {
+  description: 'Append content to a local file (restricted to project directory).',
+  schema: {
+    type: 'object',
+    properties: {
+      path:    { type: 'string' },
+      content: { type: 'string' }
+    },
+    required: ['path', 'content']
+  },
+  handler: ({ path: p, content }) => {
+    const resolved = safePath(p);
+    fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    fs.appendFileSync(resolved, content, 'utf8');
+    return { appended: true };
+  }
+});
+
+// ── shell.exec ─────────────────────────────────────────────────────────────────
+register('shell.exec', {
+  description: 'Execute a shell command. Requires shell.enabled in config and the command must be in allowedCommands.',
+  schema: {
+    type: 'object',
+    properties: {
+      command: { type: 'string', description: 'Executable name (e.g. "node", "ls").' },
+      args:    { type: 'array',  items: { type: 'string' }, description: 'Argument list.' }
+    },
+    required: ['command']
+  },
+  handler: ({ command, args = [] }) => {
+    if (!config.tools?.shell?.enabled) {
+      throw new Error('shell.exec is disabled (set config.tools.shell.enabled = true)');
+    }
+    const allowed = Array.isArray(config.tools.shell.allowedCommands)
+      ? config.tools.shell.allowedCommands
+      : [];
+    if (!allowed.includes(command)) {
+      throw new Error(`"${command}" is not in the allowed-commands list: [${allowed.join(', ')}]`);
+    }
+    const { execFile } = require('child_process');
+    const timeoutMs = config.tools.shell.timeoutMs || 10000;
+    return new Promise((resolve, reject) => {
+      execFile(
+        command,
+        args.map(String),
+        { timeout: timeoutMs, cwd: FS_SAFE_ROOT },
+        (err, stdout, stderr) => {
+          if (err) {
+            reject(new Error(err.message + (stderr ? '\n' + stderr.slice(0, 512) : '')));
+          } else {
+            resolve({ stdout: stdout.slice(0, 8192), stderr: stderr.slice(0, 1024) });
+          }
+        }
+      );
+    });
+  }
+});
+
 loadRegistry();
 
 module.exports = { register, listTools, invoke, loadRegistry, saveRegistry };

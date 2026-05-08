@@ -1,6 +1,11 @@
 /**
  * Agent Kernel – orchestrates the Planner → Solver → Critic pipeline.
- * Runs up to maxRounds retry loops per step before moving on.
+ *
+ * Enhancements:
+ *  - Parallel step execution: steps whose `dependsOn` deps are satisfied run concurrently.
+ *  - Run-scoped scratchpad: each completed step's result is written into `context.scratchpad`
+ *    so subsequent steps can build on prior work.
+ *  - Solver `onEvent` wiring: tool_call / tool_result events stream through onChunk.
  */
 
 'use strict';
@@ -58,16 +63,63 @@ async function llmCall(messages, { model, responseFormat } = {}) {
 }
 
 /**
+ * Execute a single step through the Solver → Critic retry loop.
+ * Each step gets an independent copy of the shared context so parallel
+ * steps do not clobber each other's `criticFeedback`.
+ *
+ * @param {object}   step      – planner step object
+ * @param {object}   enriched  – shared execution context (read; not mutated here)
+ * @param {Function} emit      – streaming callback
+ * @returns {{ step, result, rounds, accepted }}
+ */
+async function executeStep(step, enriched, emit) {
+  // Shallow-copy so parallel steps have their own criticFeedback slot
+  const stepCtx = { ...enriched };
+
+  let solverResult = null;
+  let verdict = { pass: false, feedback: '' };
+  let round = 0;
+
+  while (!verdict.pass && round < MAX_ROUNDS) {
+    round++;
+    emit('solving', { step, round });
+
+    solverResult = await solver.solve(
+      step,
+      stepCtx,
+      llmCall,
+      (event) => emit(event.type, event)
+    );
+
+    emit('critiquing', { step, solverResult });
+    verdict = await critic.critique(step, solverResult, llmCall);
+    emit('verdict', { step, verdict });
+
+    if (!verdict.pass) {
+      // Feed critic feedback back into step context for next retry round
+      stepCtx.criticFeedback = verdict.feedback;
+    }
+  }
+
+  return { step, result: solverResult, rounds: round, accepted: verdict.pass };
+}
+
+/**
  * Run the full Planner → Solver → Critic loop for a task.
+ *
+ * Steps are executed in dependency order; steps whose `dependsOn` list is
+ * already satisfied run concurrently via Promise.all.  Results are accumulated
+ * in a run-scoped `scratchpad` visible to subsequent steps.
+ *
  * @param {string}   task     – natural-language task description
  * @param {object}   context  – optional context/facts
  * @param {Function} onChunk  – optional streaming callback (chunk)
  * @returns {{ steps, results, summary }}
  */
 async function run(task, context = {}, onChunk = null) {
-  // Enrich context with recent memory
+  // Enrich context with recent memory and an empty scratchpad
   const recentEps = memory.recentEpisodes(5);
-  const enriched = { ...context, recentEpisodes: recentEps };
+  const enriched = { ...context, recentEpisodes: recentEps, scratchpad: {} };
 
   const emit = (type, payload) => {
     if (onChunk) onChunk({ type, ...payload });
@@ -78,34 +130,44 @@ async function run(task, context = {}, onChunk = null) {
   emit('steps', { steps });
 
   const results = [];
+  const completedSteps = new Map(); // step.step → result object
+  const remaining = [...steps];
 
-  for (const step of steps) {
-    let solverResult = null;
-    let verdict = { pass: false, feedback: '' };
-    let round = 0;
+  while (remaining.length > 0) {
+    // Collect all steps whose declared dependencies are already satisfied
+    const ready = remaining.filter((s) =>
+      (s.dependsOn || []).every((dep) => completedSteps.has(dep))
+    );
 
-    while (!verdict.pass && round < MAX_ROUNDS) {
-      round++;
-      emit('solving', { step, round });
-      solverResult = await solver.solve(step, enriched, llmCall);
-
-      emit('critiquing', { step, solverResult });
-      verdict = await critic.critique(step, solverResult, llmCall);
-      emit('verdict', { step, verdict });
-
-      if (!verdict.pass) {
-        // Feed critic feedback back into context for next round
-        enriched.criticFeedback = verdict.feedback;
-      }
+    if (!ready.length) {
+      // Dependency deadlock (e.g. malformed plan) – force the first pending step
+      console.warn('[kernel] Step dependency deadlock; forcing sequential execution');
+      ready.push(remaining[0]);
     }
 
-    // Clear per-step feedback so it doesn't bleed into subsequent steps
-    delete enriched.criticFeedback;
+    // Remove ready steps from the pending list
+    for (const s of ready) remaining.splice(remaining.indexOf(s), 1);
 
-    results.push({ step, result: solverResult, rounds: round, accepted: verdict.pass });
+    if (ready.length > 1) {
+      emit('parallel', { count: ready.length, steps: ready });
+    }
+
+    // Execute ready steps concurrently
+    const roundResults = await Promise.all(
+      ready.map((step) => executeStep(step, enriched, emit))
+    );
+
+    // Commit round results to the shared scratchpad for subsequent steps
+    for (const r of roundResults) {
+      completedSteps.set(r.step.step, r);
+      results.push(r);
+      enriched.scratchpad[`step_${r.step.step}`] = r.result?.result ?? null;
+    }
   }
 
-  const summary = results.map((r) => `Step ${r.step?.step ?? '?'}: ${r.result?.result ?? ''}`).join('\n');
+  const summary = results
+    .map((r) => `Step ${r.step?.step ?? '?'}: ${r.result?.result ?? ''}`)
+    .join('\n');
   return { steps, results, summary };
 }
 

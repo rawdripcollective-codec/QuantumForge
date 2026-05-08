@@ -100,6 +100,39 @@ app.post('/api/self-improve/run', async (_req, res) => {
   }
 });
 
+// ── SSE streaming endpoint ────────────────────────────────────────────────────
+// POST /api/agent/stream  { task: string, context?: object }
+// Returns a text/event-stream of agent progress events (same shape as WebSocket chunks).
+app.post('/api/agent/stream', async (req, res) => {
+  const { task, context = {} } = req.body || {};
+  if (typeof task !== 'string' || task.trim() === '') {
+    return res.status(400).json({ error: 'task must be a non-empty string' });
+  }
+  if (context === null || typeof context !== 'object' || Array.isArray(context)) {
+    return res.status(400).json({ error: 'context must be an object' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = (data) => {
+    if (!res.writableEnded) res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const result = await kernel.run(task, context, send);
+    await memory.saveEpisode({ task, context, result });
+    send({ type: 'done', result });
+  } catch (err) {
+    await memory.saveMistake({ task, context, error: err.message });
+    send({ type: 'error', error: err.message });
+  } finally {
+    res.end();
+  }
+});
+
 // ── HTTP + WebSocket server ───────────────────────────────────────────────────
 const { host, port } = config.gateway;
 

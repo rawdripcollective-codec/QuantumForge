@@ -1,5 +1,6 @@
 /**
- * Solver agent – executes a single step, optionally invoking MCP tools.
+ * Solver agent – executes a single step using a ReAct (Reason + Act) loop.
+ * The solver may call multiple tools in sequence before returning a final result.
  */
 
 'use strict';
@@ -7,12 +8,32 @@
 const config = require('../../config/default.json');
 const mcpFabric = require('../mcp/fabric');
 
-const SYSTEM = `You are the Solver agent in the QuantumForge multi-agent system.
-Execute the given step and return the result as a JSON object: {"result": "...", "toolsUsed": [...]}.
-If you need to call a tool, emit: {"toolCall": {"name": "...", "args": {...}}}.
-Available tools: {{TOOLS}}`;
+const MAX_TOOL_ROUNDS = config.agents.maxToolRounds || 10;
 
-async function solve(step, context = {}, llmCall) {
+const SYSTEM = `You are the Solver agent in the QuantumForge multi-agent system.
+Execute the given step, using tools as needed, and return the result.
+
+To call a tool respond with ONLY valid JSON:
+  {"toolCall": {"name": "tool-name", "args": {...}}}
+
+When you have your final answer respond with ONLY valid JSON:
+  {"result": "...", "toolsUsed": [...]}
+
+Available tools:
+{{TOOLS}}
+
+Think step-by-step. You may call multiple tools before providing your final answer.
+Never mix prose with JSON – output only one JSON object per response.`;
+
+/**
+ * Solve a single step, optionally calling MCP tools in a ReAct loop.
+ * @param {object}   step      – step object from the planner
+ * @param {object}   context   – enriched execution context
+ * @param {Function} llmCall   – LLM shim provided by the kernel
+ * @param {Function} onEvent   – optional callback for streaming tool_call/tool_result events
+ * @returns {{ result: string, toolsUsed: string[], scratchpadUpdate?: object }}
+ */
+async function solve(step, context = {}, llmCall, onEvent = null) {
   const tools = mcpFabric.listTools();
   const toolsDesc = tools.map((t) => `${t.name}: ${t.description}`).join('\n');
   const system = SYSTEM.replace('{{TOOLS}}', toolsDesc || 'none');
@@ -25,44 +46,60 @@ async function solve(step, context = {}, llmCall) {
     }
   ];
 
-  let raw = await llmCall(messages, { model: config.openai.model });
-  let parsed;
+  const toolsUsed = [];
 
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    parsed = { result: raw, toolsUsed: [] };
-  }
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const raw = await llmCall(messages, { model: config.openai.model });
 
-  // If the LLM requested a tool call, execute it and feed result back
-  if (parsed.toolCall) {
-    let toolResult;
-    try {
-      toolResult = await mcpFabric.invoke(parsed.toolCall.name, parsed.toolCall.args || {});
-    } catch (err) {
-      toolResult = { error: err.message };
-    }
-
-    // Use role:'user' to return the tool result.  The custom JSON tool-call
-    // protocol used here is not the native OpenAI function-calling format, so
-    // role:'tool' (which requires a tool_call_id tied to a prior tool_calls
-    // entry) would be rejected by the API.
-    const followUp = [
-      ...messages,
-      { role: 'assistant', content: raw },
-      { role: 'user', content: `Tool "${parsed.toolCall.name}" returned: ${JSON.stringify(toolResult).slice(0, 4096)}` }
-    ];
-
-    raw = await llmCall(followUp, { model: config.openai.model });
+    let parsed;
     try {
       parsed = JSON.parse(raw);
     } catch {
-      parsed = { result: raw, toolsUsed: [parsed.toolCall.name] };
+      // Non-JSON response treated as a final answer
+      return { result: raw, toolsUsed };
     }
-    parsed.toolsUsed = parsed.toolsUsed || [parsed.toolCall?.name].filter(Boolean);
+
+    // Final answer – no tool call requested
+    if (!parsed.toolCall) {
+      parsed.toolsUsed = parsed.toolsUsed || toolsUsed;
+      return parsed;
+    }
+
+    // Tool call requested
+    const { name: toolName, args: toolArgs = {} } = parsed.toolCall;
+    onEvent?.({ type: 'tool_call', tool: toolName, args: toolArgs });
+
+    let toolResult;
+    try {
+      toolResult = await mcpFabric.invoke(toolName, toolArgs);
+    } catch (err) {
+      toolResult = { error: err.message };
+    }
+    toolsUsed.push(toolName);
+    onEvent?.({ type: 'tool_result', tool: toolName, result: toolResult });
+
+    // Feed the tool result back into message history for the next iteration
+    messages.push({ role: 'assistant', content: raw });
+    messages.push({
+      role: 'user',
+      content: `Tool "${toolName}" returned: ${JSON.stringify(toolResult).slice(0, 4096)}`
+    });
   }
 
-  return parsed;
+  // Exceeded max tool rounds – request a final answer explicitly
+  messages.push({
+    role: 'user',
+    content: 'Provide your final answer now as: {"result": "...", "toolsUsed": [...]}'
+  });
+  const finalRaw = await llmCall(messages, { model: config.openai.model });
+  let finalParsed;
+  try {
+    finalParsed = JSON.parse(finalRaw);
+  } catch {
+    finalParsed = { result: finalRaw, toolsUsed };
+  }
+  finalParsed.toolsUsed = finalParsed.toolsUsed || toolsUsed;
+  return finalParsed;
 }
 
 module.exports = { solve };

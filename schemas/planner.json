@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Agent API",
-    "version": "1.0.0",
-    "description": "Runs the full Planner → Solver → Critic pipeline and returns the combined result."
+    "version": "1.1.0",
+    "description": "Runs the full Planner → Solver → Critic pipeline and returns the combined result. Steps with independent dependencies execute in parallel."
   },
   "paths": {
     "/api/agent": {
@@ -18,7 +18,7 @@
                 "type": "object",
                 "required": ["task"],
                 "properties": {
-                  "task": { "type": "string", "description": "High-level task description" },
+                  "task":    { "type": "string", "description": "High-level task description" },
                   "context": { "type": "object", "description": "Optional context / facts" }
                 }
               }
@@ -38,8 +38,9 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "step": { "type": "integer" },
-                          "action": { "type": "string" }
+                          "step":      { "type": "integer" },
+                          "action":    { "type": "string" },
+                          "dependsOn": { "type": "array", "items": { "type": "integer" }, "description": "Step numbers that must complete before this step." }
                         }
                       }
                     },
@@ -48,9 +49,9 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "step": { "type": "object" },
-                          "result": { "type": "object" },
-                          "rounds": { "type": "integer" },
+                          "step":     { "type": "object" },
+                          "result":   { "type": "object" },
+                          "rounds":   { "type": "integer" },
                           "accepted": { "type": "boolean" }
                         }
                       }
@@ -74,6 +75,38 @@
             "content": {
               "application/json": {
                 "schema": { "type": "object", "properties": { "error": { "type": "string" } } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/stream": {
+      "post": {
+        "operationId": "agentStream",
+        "summary": "Run the agent pipeline with Server-Sent Events streaming",
+        "description": "Identical to POST /api/agent but responses are streamed as text/event-stream. Each event is a `data: <JSON>\\n\\n` line. Final event has type 'done' or 'error'.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["task"],
+                "properties": {
+                  "task":    { "type": "string" },
+                  "context": { "type": "object" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SSE stream of agent progress events",
+            "content": {
+              "text/event-stream": {
+                "schema": { "type": "string" }
               }
             }
           }

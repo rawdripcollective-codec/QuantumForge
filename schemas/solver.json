@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Solver Agent (internal)",
-    "version": "1.0.0",
-    "description": "Internal component: executes a single step, optionally invoking MCP tools. Invoked by the kernel; not directly accessible via HTTP."
+    "version": "1.1.0",
+    "description": "Internal component: executes a single step using a ReAct loop, calling MCP tools as needed. Invoked by the kernel; not directly accessible via HTTP."
   },
   "components": {
     "schemas": {
@@ -15,22 +15,47 @@
             "type": "object",
             "description": "Step object produced by the Planner",
             "properties": {
-              "step": { "type": "integer" },
-              "action": { "type": "string" }
+              "step":      { "type": "integer" },
+              "action":    { "type": "string" },
+              "dependsOn": { "type": "array", "items": { "type": "integer" } }
             }
           },
-          "context": { "type": "object", "description": "Enriched execution context" }
+          "context": {
+            "type": "object",
+            "description": "Enriched execution context including scratchpad from prior steps"
+          }
         }
       },
       "SolverOutput": {
         "type": "object",
         "properties": {
-          "result": { "type": "string", "description": "Result of executing the step" },
+          "result": {
+            "type": "string",
+            "description": "Result of executing the step"
+          },
           "toolsUsed": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Names of MCP tools invoked"
+            "description": "Names of all MCP tools invoked during the ReAct loop"
           }
+        }
+      },
+      "ToolCallEvent": {
+        "type": "object",
+        "description": "Streaming event emitted when the solver invokes a tool",
+        "properties": {
+          "type": { "type": "string", "enum": ["tool_call"] },
+          "tool": { "type": "string" },
+          "args": { "type": "object" }
+        }
+      },
+      "ToolResultEvent": {
+        "type": "object",
+        "description": "Streaming event emitted after a tool returns its result",
+        "properties": {
+          "type":   { "type": "string", "enum": ["tool_result"] },
+          "tool":   { "type": "string" },
+          "result": {}
         }
       }
     }

@@ -8,8 +8,15 @@ const config = require('../../config/default.json');
 
 const SYSTEM = `You are the Planner agent in the QuantumForge multi-agent system.
 Your job is to decompose a user task into a concise, ordered list of atomic steps.
-Output ONLY a JSON array of step objects: [{"step": 1, "action": "...description..."}, ...]
-No prose, no markdown fences – pure JSON.`;
+Output ONLY a JSON array of step objects:
+[{"step": 1, "action": "...description...", "dependsOn": []}, ...]
+
+Rules:
+- "dependsOn" is an optional array of step numbers that MUST complete before this step starts.
+- Steps whose "dependsOn" is empty (or absent) can run in parallel with other ready steps.
+- Only add a dependency when a step genuinely needs the output of a prior step.
+- Keep the plan minimal – prefer fewer, broader steps over many tiny ones.
+No prose, no markdown fences – pure JSON array only.`;
 
 async function plan(task, context = {}, llmCall) {
   const messages = [

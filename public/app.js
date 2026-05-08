@@ -65,8 +65,17 @@ function handleWsMessage(msg) {
     case 'steps':
       appendLog(`  Steps (${msg.steps.length}): ${msg.steps.map((s) => s.action || 'unknown').join(' → ')}`, 'muted');
       break;
+    case 'parallel':
+      appendLog(`  ⚡ Parallel: ${(msg.steps || []).map((s) => `[${s.step}] ${s.action || ''}`.trim()).join(' + ')}`, 'info');
+      break;
     case 'solving':
       appendLog(`  [Round ${msg.round}] Solving step ${msg.step.step}: ${msg.step.action}`, 'info');
+      break;
+    case 'tool_call':
+      appendLog(`    🔧 ${msg.tool}(${JSON.stringify(msg.args || {}).slice(0, 80)})`, 'muted');
+      break;
+    case 'tool_result':
+      appendLog(`    ← ${JSON.stringify(msg.result ?? '').slice(0, 120)}`, 'muted');
       break;
     case 'critiquing':
       appendLog(`  Critiquing step ${msg.step.step}…`, 'muted');
@@ -87,9 +96,6 @@ function handleWsMessage(msg) {
       appendLog(`Error: ${msg.error}`, 'error');
       setStatus('Error');
       setRunning(false);
-      break;
-    case 'chunk':
-      handleWsMessage(msg); // recurse for nested chunk types
       break;
     default:
       appendLog(JSON.stringify(msg), 'muted');
