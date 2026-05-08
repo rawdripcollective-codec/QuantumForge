@@ -8,8 +8,16 @@ function withTempCwd(fn) {
   const originalCwd = process.cwd();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'quantumforge-test-'));
   process.chdir(tempDir);
+  const shouldRestoreCwd = () => {
+    try {
+      const relative = path.relative(tempDir, process.cwd());
+      return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+    } catch {
+      return true;
+    }
+  };
   const cleanup = () => {
-    if (process.cwd() === tempDir) {
+    if (shouldRestoreCwd()) {
       process.chdir(originalCwd);
     }
     fs.rmSync(tempDir, { recursive: true, force: true });

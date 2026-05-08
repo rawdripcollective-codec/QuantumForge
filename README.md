@@ -58,7 +58,7 @@ npm test
 npm run test:coverage
 ```
 
-> Note: `npm run test:coverage` depends on Node.js coverage support. If you are using an older Node.js release, the coverage command may not work; use a current Node.js version when running coverage.
+> Note: The test suite runs serially because some hermetic tests temporarily swap the working directory and stub process-wide globals. Use Node.js 20 or newer; `npm run test:coverage` depends on Node's experimental coverage support and may not work on older releases.
 
 The current automated suite focuses on core local logic:
 
