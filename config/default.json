@@ -5,7 +5,17 @@
   },
   "agents": {
     "maxRounds": 5,
+    "maxToolRounds": 10,
     "timeoutMs": 30000
+  },
+  "tools": {
+    "http": {
+      "enabled": false
+    },
+    "shell": {
+      "enabled": false,
+      "allowedCommands": []
+    }
   },
   "mcp": {
     "registryPath": "./data/mcp-registry.json"

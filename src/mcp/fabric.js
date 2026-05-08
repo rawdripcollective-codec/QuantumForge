@@ -137,6 +137,21 @@ register('fs.list', {
   handler: ({ path: p }) => fs.readdirSync(safePath(p))
 });
 
+register('fs.append', {
+  description: 'Append content to a local file (restricted to project directory). Creates the file if it does not exist.',
+  schema: {
+    type: 'object',
+    properties: { path: { type: 'string' }, content: { type: 'string' } },
+    required: ['path', 'content']
+  },
+  handler: ({ path: p, content }) => {
+    const resolved = safePath(p);
+    fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    fs.appendFileSync(resolved, content, 'utf8');
+    return { appended: true };
+  }
+});
+
 register('memory.set', {
   description: 'Store a key-value pair in persistent memory.',
   schema: {
@@ -154,6 +169,79 @@ register('memory.get', {
   description: 'Retrieve a value from persistent memory.',
   schema: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] },
   handler: ({ key }) => require('../memory').get(key)
+});
+
+register('memory.search', {
+  description: 'Search persistent memory for entries whose key or value contains the query string.',
+  schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+  handler: ({ query }) => {
+    const mem = require('../memory');
+    const all = mem.getAll();
+    const q = String(query).toLowerCase();
+    const results = {};
+    for (const [k, v] of Object.entries(all.memory)) {
+      if (k.toLowerCase().includes(q) || String(v).toLowerCase().includes(q)) {
+        results[k] = v;
+      }
+    }
+    return results;
+  }
+});
+
+register('http.fetch', {
+  description: 'Fetch a URL over HTTP/HTTPS and return status + body (first 8 KB). Must be enabled via config.tools.http.enabled.',
+  schema: {
+    type: 'object',
+    properties: {
+      url: { type: 'string' },
+      method: { type: 'string', default: 'GET' },
+      headers: { type: 'object' },
+      body: { type: 'string' }
+    },
+    required: ['url']
+  },
+  handler: async ({ url, method = 'GET', headers = {}, body }) => {
+    if (!config.tools?.http?.enabled) {
+      throw new Error('http.fetch is disabled. Set config.tools.http.enabled = true to enable it.');
+    }
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: body !== undefined ? body : undefined
+    });
+    const text = await res.text();
+    return { status: res.status, body: text.slice(0, 8192) };
+  }
+});
+
+register('shell.exec', {
+  description: 'Execute an allowed shell command (execFile, no shell interpolation). Disabled by default; requires config.tools.shell.enabled = true and the command listed in config.tools.shell.allowedCommands.',
+  schema: {
+    type: 'object',
+    properties: {
+      command: { type: 'string' },
+      args: { type: 'array', items: { type: 'string' } },
+      cwd: { type: 'string' }
+    },
+    required: ['command']
+  },
+  handler: ({ command, args = [], cwd = '.' }) => {
+    if (!config.tools?.shell?.enabled) {
+      throw new Error('shell.exec is disabled. Set config.tools.shell.enabled = true to enable it.');
+    }
+    const allowed = config.tools?.shell?.allowedCommands || [];
+    if (!allowed.includes(command)) {
+      throw new Error(`Command not allowed: "${command}". Add it to config.tools.shell.allowedCommands to permit it.`);
+    }
+    const { execFileSync } = require('child_process');
+    const safeCwd = safePath(cwd);
+    const output = execFileSync(command, args, {
+      cwd: safeCwd,
+      encoding: 'utf8',
+      timeout: 15000
+    });
+    return { output };
+  }
 });
 
 loadRegistry();
