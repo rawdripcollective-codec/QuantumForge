@@ -44,14 +44,17 @@ test('solver handles raw responses and tool-call follow-up flows', async () => {
     const rawResult = await solver.solve({ step: 1, action: 'say hi' }, {}, async () => 'plain text');
     assert.deepEqual(rawResult, { result: 'plain text', toolsUsed: [] });
 
-    const replies = [
-      JSON.stringify({ toolCall: { name: 'demo.echo', args: { value: 7 } } }),
-      JSON.stringify({ result: 'completed' })
-    ];
+    let replyIndex = 0;
     const toolResult = await solver.solve(
       { step: 2, action: 'use a tool' },
       { attempt: 1 },
-      async () => replies.shift()
+      async () => {
+        replyIndex += 1;
+        if (replyIndex === 1) {
+          return JSON.stringify({ toolCall: { name: 'demo.echo', args: { value: 7 } } });
+        }
+        return JSON.stringify({ result: 'completed' });
+      }
     );
 
     assert.deepEqual(toolResult, { result: 'completed', toolsUsed: ['demo.echo'] });

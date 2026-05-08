@@ -89,6 +89,7 @@ test('self-improve logs scheduler callback errors without throwing', async () =>
   const error = console.error;
   const logs = [];
   const originalRecentMistakes = memory.recentMistakes;
+  const priorSchedules = scheduled.length;
 
   console.error = (...args) => logs.push(args.join(' '));
   memory.recentMistakes = () => {
@@ -97,7 +98,8 @@ test('self-improve logs scheduler callback errors without throwing', async () =>
 
   try {
     selfImprove.start();
-    await scheduled[scheduled.length - 1].fn();
+    const scheduledJob = scheduled[priorSchedules];
+    await scheduledJob.fn();
     assert.equal(logs.some((entry) => entry.includes('[self-improve] error: cron failure')), true);
   } finally {
     memory.recentMistakes = originalRecentMistakes;
