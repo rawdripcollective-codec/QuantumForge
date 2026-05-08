@@ -29,18 +29,25 @@ test('memory initializes storage files and persists key-value data', () => {
 });
 
 test('memory rotates old episodes and returns recent history', () => {
-  withTempCwd(() => {
+  withTempCwd((cwd) => {
     const memory = freshRequire(memoryModulePath);
+    const episodesPath = path.join(cwd, 'data', 'episodes.json');
+    const seededEpisodes = Array.from({ length: 1000 }, (_, i) => ({
+      task: `seed-task-${i}`,
+      result: { index: i },
+      ts: new Date(Date.UTC(2024, 0, 1, 0, 0, i)).toISOString()
+    }));
 
-    for (let i = 0; i < 1002; i++) {
-      memory.saveEpisode({ task: `task-${i}`, result: { index: i } });
-    }
+    fs.writeFileSync(episodesPath, JSON.stringify(seededEpisodes, null, 2), 'utf8');
+
+    memory.saveEpisode({ task: 'task-1000', result: { index: 1000 } });
+    memory.saveEpisode({ task: 'task-1001', result: { index: 1001 } });
 
     memory.saveMistake({ task: 'broken-task', error: 'boom' });
 
     const all = memory.getAll();
     assert.equal(all.episodes.length, 1000);
-    assert.equal(all.episodes[0].task, 'task-2');
+    assert.equal(all.episodes[0].task, 'seed-task-2');
     assert.match(all.episodes[0].ts, /\d{4}-\d{2}-\d{2}T/);
     assert.deepEqual(
       memory.recentEpisodes(2).map((episode) => episode.task),
