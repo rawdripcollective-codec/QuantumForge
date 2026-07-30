@@ -51,6 +51,22 @@ npm start
 
 Open **http://127.0.0.1:18789** in your browser (or the Termux browser) to access the PWA.
 
+## Testing
+
+```bash
+npm test
+npm run test:coverage
+```
+
+> Note: The test suite runs serially because some hermetic tests temporarily swap the working directory and stub process-wide globals. Use Node.js 20 or newer; `npm run test:coverage` depends on Node's experimental coverage support and may not work on older releases.
+
+The current automated suite focuses on core local logic:
+
+- memory persistence and corruption handling
+- MCP fabric registry and sandboxed file tools
+- self-improvement insight generation and scheduler lifecycle
+- planner, solver, critic, and kernel orchestration behavior
+
 ## REST API
 
 | Method | Path | Description |

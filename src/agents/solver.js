@@ -36,9 +36,10 @@ async function solve(step, context = {}, llmCall) {
 
   // If the LLM requested a tool call, execute it and feed result back
   if (parsed.toolCall) {
+    const toolName = parsed.toolCall.name;
     let toolResult;
     try {
-      toolResult = await mcpFabric.invoke(parsed.toolCall.name, parsed.toolCall.args || {});
+      toolResult = await mcpFabric.invoke(toolName, parsed.toolCall.args || {});
     } catch (err) {
       toolResult = { error: err.message };
     }
@@ -50,16 +51,17 @@ async function solve(step, context = {}, llmCall) {
     const followUp = [
       ...messages,
       { role: 'assistant', content: raw },
-      { role: 'user', content: `Tool "${parsed.toolCall.name}" returned: ${JSON.stringify(toolResult).slice(0, 4096)}` }
+      { role: 'user', content: `Tool "${toolName}" returned: ${JSON.stringify(toolResult).slice(0, 4096)}` }
     ];
 
     raw = await llmCall(followUp, { model: config.openai.model });
     try {
       parsed = JSON.parse(raw);
     } catch {
-      parsed = { result: raw, toolsUsed: [parsed.toolCall.name] };
+      parsed = { result: raw, toolsUsed: [toolName] };
     }
-    parsed.toolsUsed = parsed.toolsUsed || [parsed.toolCall?.name].filter(Boolean);
+    const existingToolsUsed = Array.isArray(parsed.toolsUsed) ? parsed.toolsUsed : [];
+    parsed.toolsUsed = [...new Set([...existingToolsUsed, toolName].filter(Boolean))];
   }
 
   return parsed;
