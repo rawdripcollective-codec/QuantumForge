@@ -142,6 +142,24 @@
     .log .line.error   { color: #ff7b72; }
     .log .line.muted   { color: var(--muted); }
 
+    /* Streaming token animation */
+    .log .line.streaming { color: var(--accent); }
+    .log .streaming-cursor {
+      display: inline-block;
+      color: var(--accent);
+      animation: blink 1s step-end infinite;
+      margin-left: 1px;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+    .log .streaming-label {
+      color: var(--accent);
+      font-weight: 600;
+      margin-right: 4px;
+    }
+
     /* ── Integrations ────────────────────────────────────────────── */
     .tools-grid {
       display: grid;

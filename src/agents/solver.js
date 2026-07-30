@@ -113,13 +113,14 @@ function truncate(s, max = MAX_ARG_SIZE) {
 
 /**
  * Run the solver for one step.
- * @param {object}   step     - { step: number, action: string }
- * @param {object}   context  - enriched execution context
- * @param {Function} llmCall  - LLM call function
- * @param {Function} [emit]  - optional streaming callback: emit({ type, ... })
+ * @param {object}   step            - { step: number, action: string }
+ * @param {object}   context         - enriched execution context
+ * @param {Function} llmCall         - non-streaming LLM call function
+ * @param {Function} [streamingLlm]   - optional streaming LLM: (messages, opts) => asyncGenerator
+ * @param {Function} [emit]           - optional streaming callback: emit({ type, ... })
  * @returns {Promise<{result: string, toolsUsed: string[]}>}
  */
-async function solve(step, context = {}, llmCall, emit = null) {
+async function solve(step, context = {}, llmCall, streamingLlm = null, emit = null) {
   const tools = describeTools();
   const toolsBlock = tools.length
     ? 'Available tools:\n' + tools.map((t) =>
@@ -145,7 +146,24 @@ async function solve(step, context = {}, llmCall, emit = null) {
 
     let raw;
     try {
-      raw = await llmCall(messages, { responseFormat: 'json', temperature: 0.2 });
+      if (streamingLlm) {
+        // Stream tokens to the client in real time.
+        raw = '';
+        const opts = { responseFormat: 'json', temperature: 0.2 };
+        try {
+          const gen = streamingLlm(messages, opts);
+          for await (const token of gen) {
+            raw += token;
+            if (emit) emit({ type: 'token', step, token, accumulated: raw.slice(0, 500) });
+          }
+        } catch (streamErr) {
+          // Fall back to non-streaming if streaming fails (e.g., provider doesn't support it)
+          log.warn('solver: streaming failed, falling back to non-streaming', { err: streamErr.message });
+          raw = await llmCall(messages, opts);
+        }
+      } else {
+        raw = await llmCall(messages, { responseFormat: 'json', temperature: 0.2 });
+      }
     } catch (err) {
       log.warn('solver: llm call failed', { step: step?.step, err: err.message });
       if (emit) emit({ type: 'solver_error', step, err: err.message });
@@ -157,7 +175,6 @@ async function solve(step, context = {}, llmCall, emit = null) {
 
     const decision = parseDecision(raw);
     if (!decision) {
-      // Treat raw as a free-form final result
       log.warn('solver: non-JSON response, treating as final', { raw: String(raw).slice(0, 120) });
       const result = typeof raw === 'string' ? raw.trim() : JSON.stringify(raw);
       if (emit) emit({ type: 'solver_final', step, result, toolsUsed });

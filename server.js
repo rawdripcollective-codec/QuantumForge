@@ -85,6 +85,56 @@ app.post('/api/agent', async (req, res) => {
   }
 });
 
+// POST /api/agent/stream  { task: string, context?: object }
+// Streams agent progress as Server-Sent Events (SSE).
+// Clients receive: event: chunk\ndata: {...}\n\n
+app.post('/api/agent/stream', async (req, res) => {
+  const { task, context = {} } = req.body || {};
+  if (typeof task !== 'string' || task.trim() === '') {
+    return res.status(400).json({ error: 'task must be a non-empty string' });
+  }
+
+  // SSE setup
+  res.writeHead(200, {
+    'Content-Type':  'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection':    'keep-alive',
+    'X-Accel-Buffering': 'no',   // disable nginx buffering
+  });
+
+  function send(eventType, data) {
+    res.write(`event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`);
+  }
+
+  try {
+    const result = await kernel.run(task, context, (chunk) => {
+      // Resolve the SSE event name from the chunk.
+      // Kernel may emit raw {type:'token',...} or WS-wrapped {type:'chunk', type:{type:'token',...}}.
+      let evType = 'chunk';
+      let data = chunk;
+      if (chunk && typeof chunk === 'object') {
+        if (typeof chunk.type === 'string') {
+          evType = chunk.type;
+        } else if (chunk.type && typeof chunk.type === 'object' && typeof chunk.type.type === 'string') {
+          // WS-envelope: extract inner type and flatten inner into data.
+          evType = chunk.type.type;
+          data = { ...chunk, ...chunk.type };
+          delete data.type;
+        }
+      }
+      send(evType, data);
+    });
+    await memory.saveEpisode({ task, context, result });
+    send('done', { result });
+  } catch (err) {
+    log.error('agent-stream: request failed', { err: err.message, task: task.slice(0, 80) });
+    await memory.saveMistake({ task, context, error: err.message });
+    send('error', { error: err.message });
+  } finally {
+    res.end();
+  }
+});
+
 // ── MCP tool endpoints ────────────────────────────────────────────────────────
 // GET  /api/tools          – list registered tools
 app.get('/api/tools', (_req, res) => {

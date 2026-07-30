@@ -25,7 +25,7 @@ const memory  = require('../memory');
 const log     = require('../lib/logger');
 const cost    = require('../lib/cost');
 const selfImprove = require('../self-improve');
-const { createLlmCall } = require('./llm');
+const { createLlmCall, createLlmStream } = require('./llm');
 
 const MAX_ROUNDS = config.agents.maxRounds;
 const MAX_TOTAL_STEPS = config.agents?.maxTotalSteps || 20;  // hard wall to prevent cost explosion
@@ -37,6 +37,21 @@ const MAX_TOTAL_STEPS = config.agents?.maxTotalSteps || 20;  // hard wall to pre
  */
 function createKernel(providerOpts = {}) {
   const { call: llmCall, provider: resolvedProvider } = createLlmCall(providerOpts);
+
+  // Streaming LLM — created lazily so we only initialise the stream if needed.
+  // The stream is a function that returns an async generator each time you call it.
+  let _streamingLlm = null;
+  function getStreamingLlm() {
+    if (!_streamingLlm) {
+      try {
+        const { stream } = createLlmStream(providerOpts);
+        _streamingLlm = stream;
+      } catch {
+        _streamingLlm = null;
+      }
+    }
+    return _streamingLlm;
+  }
 
   return {
     provider: () => resolvedProvider,
@@ -93,7 +108,7 @@ function createKernel(providerOpts = {}) {
         while (!verdict.pass && round < MAX_ROUNDS) {
           round++;
           emit('solving', { step, round });
-          solverResult = await solver.solve(step, enriched, llmCall, emit);
+          solverResult = await solver.solve(step, enriched, llmCall, getStreamingLlm(), emit);
 
           emit('critiquing', { step, solverResult });
           try {
