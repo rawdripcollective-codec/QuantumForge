@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Runtime data
+data/*.json
+data/mcp-servers/
+data/mcp-registry.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Env
+.env
+.env.local
+
+# Test artifacts
+coverage/
+.nyc_output/
