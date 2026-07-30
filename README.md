@@ -26,8 +26,23 @@ Self-Improvement ─── cron-based mistake analysis + usage loops
 - **Self-improvement** – hourly cron analyses errors and usage patterns; stores insights in memory
 - **PWA UI** – agent playground, integrations panel, memory viewer, self-improve dashboard
 - **WebSocket streaming** – real-time step-by-step agent progress
-- **Offline-capable** – runs without `OPENAI_API_KEY`; falls back to stub responses
+- **Multi-provider LLM** – tries OpenRouter → HuggingFace → Ollama → Gemini → OpenAI in order; gracefully falls back to an offline stub when no provider is available
 - **Node.js gateway on `127.0.0.1:18789`** – low-latency local endpoint
+
+## LLM Provider Configuration
+
+QuantumForge picks an LLM provider automatically by checking for API keys in this priority order:
+
+| Priority | Provider | Environment variable(s) | Default model |
+|----------|----------|-------------------------|---------------|
+| 1 (primary) | **OpenRouter** | `OPENROUTER_API_KEY` | `openai/gpt-4o` |
+| 2 | **HuggingFace** | `HUGGINGFACE_API_KEY` or `HF_TOKEN` | `meta-llama/Llama-3.3-70B-Instruct` |
+| 3 | **Ollama** (local) | *(no key needed)* | `llama3` |
+| 4 | **Gemini** | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | `gemini-1.5-flash` |
+| 5 | **OpenAI** | `OPENAI_API_KEY` | `gpt-4o` |
+| 6 | Offline stub | *(always available)* | — |
+
+The first provider whose key is present (or, for Ollama, whose local server is reachable) is used. All others are skipped silently. Model names and base URLs can be overridden in `config/default.json`.
 
 ## Quick Start (Termux / proot Ubuntu)
 
@@ -41,8 +56,11 @@ git clone https://github.com/rawdripcollective-codec/QuantumForge
 cd QuantumForge
 npm install
 
-# 3. (Optional) Set your OpenAI key for real LLM responses
-export OPENAI_API_KEY=sk-...
+# 3. Set your preferred LLM provider key (OpenRouter is the default)
+export OPENROUTER_API_KEY=sk-or-...     # primary
+# export HUGGINGFACE_API_KEY=hf_...    # backup 1
+# export GEMINI_API_KEY=AIza...        # backup 3
+# export OPENAI_API_KEY=sk-...         # legacy fallback
 
 # 4. Start the gateway
 npm start
