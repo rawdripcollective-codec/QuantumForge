@@ -17,9 +17,10 @@ npm-debug.log*
 *.swp
 *~
 
-# Env
+# Env — NEVER commit .env
 .env
 .env.local
+.env.production
 
 # Test artifacts
 coverage/

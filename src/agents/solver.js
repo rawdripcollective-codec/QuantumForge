@@ -14,6 +14,9 @@
  *   3. If "tool", invoke via MCP fabric, append result to the conversation, repeat.
  *   4. If "final" or loop hits MAX_TOOL_CALLS, return the final result.
  *
+ * Streaming: when an `emit` callback is provided, the solver emits incremental
+ * chunks so the caller can stream progress to the client in real time.
+ *
  * Why text-based tools instead of OpenAI's native function-calling?
  *   - Consistency across all 4 providers (Anthropic, OpenRouter, Ollama
  *     all support the JSON text protocol; native function-calling API
@@ -110,12 +113,13 @@ function truncate(s, max = MAX_ARG_SIZE) {
 
 /**
  * Run the solver for one step.
- * @param {object} step - { step: number, action: string }
- * @param {object} context - enriched execution context
- * @param {Function} llmCall
+ * @param {object}   step     - { step: number, action: string }
+ * @param {object}   context  - enriched execution context
+ * @param {Function} llmCall  - LLM call function
+ * @param {Function} [emit]  - optional streaming callback: emit({ type, ... })
  * @returns {Promise<{result: string, toolsUsed: string[]}>}
  */
-async function solve(step, context = {}, llmCall) {
+async function solve(step, context = {}, llmCall, emit = null) {
   const tools = describeTools();
   const toolsBlock = tools.length
     ? 'Available tools:\n' + tools.map((t) =>
@@ -137,11 +141,14 @@ async function solve(step, context = {}, llmCall) {
   let lastToolError = null;
 
   for (let i = 0; i < MAX_TOOL_CALLS; i++) {
+    if (emit) emit({ type: 'llm_call', step, round: i + 1, toolCallIndex: i });
+
     let raw;
     try {
       raw = await llmCall(messages, { responseFormat: 'json', temperature: 0.2 });
     } catch (err) {
       log.warn('solver: llm call failed', { step: step?.step, err: err.message });
+      if (emit) emit({ type: 'solver_error', step, err: err.message });
       return {
         result: `[solver error] ${err.message}`,
         toolsUsed,
@@ -152,17 +159,16 @@ async function solve(step, context = {}, llmCall) {
     if (!decision) {
       // Treat raw as a free-form final result
       log.warn('solver: non-JSON response, treating as final', { raw: String(raw).slice(0, 120) });
-      return {
-        result: typeof raw === 'string' ? raw.trim() : JSON.stringify(raw),
-        toolsUsed,
-      };
+      const result = typeof raw === 'string' ? raw.trim() : JSON.stringify(raw);
+      if (emit) emit({ type: 'solver_final', step, result, toolsUsed });
+      return { result, toolsUsed };
     }
 
     lastDecision = decision;
 
     if (decision.type === 'final') {
-      // Merge any tools the LLM declared with the ones we tracked
       const merged = Array.from(new Set([...toolsUsed, ...decision.toolsUsed]));
+      if (emit) emit({ type: 'solver_final', step, result: decision.result, toolsUsed: merged });
       return { result: decision.result, toolsUsed: merged };
     }
 
@@ -173,10 +179,14 @@ async function solve(step, context = {}, llmCall) {
       lastToolError = errMsg;
       messages.push({ role: 'assistant', content: raw });
       messages.push({ role: 'user', content: `Tool error: ${errMsg}. Try a different tool, or return a "final" decision.` });
+      if (emit) emit({ type: 'tool_unknown', step, tool: decision.name, err: errMsg });
       continue;
     }
 
     toolsUsed.push(decision.name);
+
+    if (emit) emit({ type: 'tool_call', step, tool: decision.name, args: decision.args });
+
     let toolResult;
     try {
       toolResult = await mcpFabric.invoke(decision.name, decision.args || {});
@@ -184,9 +194,11 @@ async function solve(step, context = {}, llmCall) {
     } catch (err) {
       lastToolError = err.message;
       toolResult = { error: err.message };
+      if (emit) emit({ type: 'tool_error', step, tool: decision.name, err: err.message });
     }
 
-    // Append the assistant tool call and the tool result to the conversation
+    if (emit) emit({ type: 'tool_result', step, tool: decision.name, truncated: typeof toolResult === 'string' ? toolResult.length : JSON.stringify(toolResult).length });
+
     messages.push({ role: 'assistant', content: raw });
     messages.push({
       role: 'user',
@@ -194,16 +206,16 @@ async function solve(step, context = {}, llmCall) {
     });
   }
 
-  // Hit the cap. Use the last decision's content if it's a final, else summarize.
+  // Hit the cap.
   if (lastDecision?.type === 'final') {
+    if (emit) emit({ type: 'solver_final', step, result: lastDecision.result, toolsUsed });
     return { result: lastDecision.result, toolsUsed };
   }
-  return {
-    result: lastToolError
-      ? `[solver] Reached tool-call limit (${MAX_TOOL_CALLS}). Last error: ${lastToolError}`
-      : `[solver] Reached tool-call limit (${MAX_TOOL_CALLS}) without a final answer.`,
-    toolsUsed,
-  };
+  const result = lastToolError
+    ? `[solver] Reached tool-call limit (${MAX_TOOL_CALLS}). Last error: ${lastToolError}`
+    : `[solver] Reached tool-call limit (${MAX_TOOL_CALLS}) without a final answer.`;
+  if (emit) emit({ type: 'solver_final', step, result, toolsUsed });
+  return { result, toolsUsed };
 }
 
 module.exports = { solve, parseDecision, describeTools, MAX_TOOL_CALLS };

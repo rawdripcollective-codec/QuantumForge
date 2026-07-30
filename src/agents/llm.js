@@ -71,6 +71,37 @@ async function callOpenAI(client, messages, opts, providerConfig) {
   return msg.content || '';
 }
 
+/** Streaming variant of callOpenAI — yields chunks for real-time streaming. */
+async function* streamOpenAI(client, messages, opts, providerConfig) {
+  const params = {
+    model: opts.model || providerConfig.model,
+    messages,
+    stream: true,
+  };
+  if (opts.responseFormat === 'json') {
+    params.response_format = { type: 'json_object' };
+  }
+  if (typeof opts.temperature === 'number') params.temperature = opts.temperature;
+
+  const stream = await client.chat.completions.create(params);
+  let fullText = '';
+  for await (const chunk of stream) {
+    const text = chunk.choices?.[0]?.delta?.content || '';
+    fullText += text;
+    yield text;
+  }
+  // Record cost from the non-streaming response embedded in the stream final
+  // (OpenAI streams don't include usage — estimate at 10x completion chars as rough token proxy)
+  if (fullText.length > 0) {
+    cost.record({
+      provider: 'openai',
+      model: params.model,
+      promptTokens: 0, // cannot be determined from streaming
+      completionTokens: Math.ceil(fullText.length / 4),
+    });
+  }
+}
+
 /** Anthropic uses a different SDK. */
 function makeAnthropicClient(providerConfig) {
   const Anthropic = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk');
@@ -117,6 +148,42 @@ async function callAnthropic(client, messages, opts, providerConfig) {
   return text;
 }
 
+/** Streaming variant of callAnthropic — yields text chunks. */
+async function* streamAnthropic(client, messages, opts, providerConfig) {
+  const system = [];
+  const rest = [];
+  for (const m of messages) {
+    if (m.role === 'system') system.push(m.content);
+    else rest.push(m);
+  }
+  const params = {
+    model: opts.model || providerConfig.model,
+    max_tokens: opts.maxTokens || 4096,
+    system: system.join('\n\n') || undefined,
+    messages: rest.map((m) => ({ role: m.role, content: m.content })),
+    stream: true,
+  };
+  if (typeof opts.temperature === 'number') params.temperature = opts.temperature;
+
+  const stream = await client.messages.stream(params);
+  let fullText = '';
+  for await (const event of stream) {
+    const textChunk = event.type === 'content_block_delta'
+      ? event.delta?.text || ''
+      : '';
+    fullText += textChunk;
+    yield textChunk;
+  }
+  if (fullText.length > 0) {
+    cost.record({
+      provider: 'anthropic',
+      model: params.model,
+      promptTokens: 0,
+      completionTokens: Math.ceil(fullText.length / 4),
+    });
+  }
+}
+
 /** Ollama uses a simple HTTP API. No SDK needed. */
 async function callOllama(messages, opts, providerConfig) {
   const baseURL = (providerConfig.baseURL || 'http://localhost:11434').replace(/\/$/, '');
@@ -151,14 +218,71 @@ async function callOllama(messages, opts, providerConfig) {
   return content;
 }
 
+/** Streaming variant of callOllama — yields text chunks via SSE. */
+async function* streamOllama(messages, opts, providerConfig) {
+  const baseURL = (providerConfig.baseURL || 'http://localhost:11434').replace(/\/$/, '');
+  const params = {
+    model: opts.model || providerConfig.model,
+    messages,
+    stream: true,
+  };
+  if (opts.responseFormat === 'json') params.format = 'json';
+  if (typeof opts.temperature === 'number') params.options = { ...(params.options || {}), temperature: opts.temperature };
+
+  const res = await fetch(`${baseURL}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+    signal: AbortSignal.timeout(providerConfig.timeoutMs || config.agents.timeoutMs || 30000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Ollama HTTP ${res.status}: ${text.slice(0, 200)}`);
+  }
+
+  // Ollama uses SSE — each line is a JSON object with a "message.content" field.
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || ''; // keep incomplete line in buffer
+    for (const line of lines) {
+      if (!line.trim() || !line.startsWith('{')) continue;
+      try {
+        const obj = JSON.parse(line);
+        const chunk = obj.message?.content || '';
+        fullText += chunk;
+        yield chunk;
+      } catch {
+        // skip malformed SSE lines
+      }
+    }
+  }
+
+  if (fullText.length > 0) {
+    cost.record({
+      provider: 'ollama',
+      model: params.model,
+      promptTokens: 0,
+      completionTokens: Math.ceil(fullText.length / 4),
+    });
+  }
+}
+
 // ── Provider router ────────────────────────────────────────────────────────────
 
-/** Map provider name → (factory, call) tuple. Lazy-loaded. */
+/** Map provider name → (factory, call, stream) tuple. Lazy-loaded. */
 const PROVIDERS = {
-  openai:     { make: makeOpenAIClient,   call: callOpenAI },
-  openrouter: { make: makeOpenAIClient,   call: callOpenAI },
-  anthropic:  { make: makeAnthropicClient, call: callAnthropic },
-  ollama:     { make: null,               call: callOllama },  // no client needed
+  openai:     { make: makeOpenAIClient,    call: callOpenAI,    stream: streamOpenAI },
+  openrouter: { make: makeOpenAIClient,    call: callOpenAI,    stream: streamOpenAI },
+  anthropic:  { make: makeAnthropicClient, call: callAnthropic, stream: streamAnthropic },
+  ollama:     { make: null,                call: callOllama,   stream: streamOllama },
 };
 
 /** Which errors are retriable. */
@@ -299,6 +423,92 @@ function createLlmCall(overrides = {}) {
   };
 }
 
+/**
+ * Create a *streaming* LLM call — returns an async generator that yields
+ * text chunks as they arrive from the provider.
+ *
+ * Usage:
+ *   const { stream } = createLlmStream({ provider: 'openai' });
+ *   for await (const chunk of stream(messages, opts)) {
+ *     process.stdout.write(chunk);
+ *   }
+ *   const fullText = await stream(messages, opts).return();
+ *
+ * @returns {{ stream: Function, provider: string }}
+ */
+function createLlmStream(overrides = {}) {
+  const requested = overrides.provider
+    || process.env.QFORGE_PROVIDER
+    || config.llm?.provider
+    || null;
+
+  if (!requested || requested === 'offline') {
+    // Offline stub — resolve synchronously then return a no-op stream wrapper
+    return {
+      provider: 'offline',
+      stream: async function* offlineStream(messages, opts = {}) {
+        yield offlineStub(messages, opts);
+      },
+    };
+  }
+
+  if (!PROVIDERS[requested]) {
+    throw new Error(`Unknown LLM provider: ${requested}. Valid: ${Object.keys(PROVIDERS).join(', ')}, offline`);
+  }
+
+  const apiKey = overrides.apiKey || resolveApiKey(requested);
+  if (requested !== 'ollama' && !apiKey) {
+    return {
+      provider: 'offline',
+      stream: async function* offlineStream(messages, opts = {}) {
+        yield offlineStub(messages, opts);
+      },
+    };
+  }
+
+  const providerConfig = {
+    ...(config.llm?.[requested] || {}),
+    ...overrides,
+    apiKey,
+  };
+  if (requested === 'ollama' && !providerConfig.baseURL) {
+    providerConfig.baseURL = config.llm?.ollama?.baseURL || 'http://localhost:11434';
+  }
+
+  const { make, stream: streamFn } = PROVIDERS[requested];
+  const client = make ? make(providerConfig) : null;
+
+  return {
+    provider: requested,
+    stream: async function* llmStream(messages, opts = {}) {
+      let fullText = '';
+      try {
+        for await (const chunk of streamFn(client, messages, opts, providerConfig)) {
+          fullText += chunk;
+          yield chunk;
+        }
+      } catch (err) {
+        if (isRetriable(err)) {
+          log.warn('llm: streaming call failed, falling back to non-streaming', { provider: requested, err: err.message });
+          // Fall back to non-streaming call
+          const { call } = PROVIDERS[requested];
+          const result = await withRetry(
+            () => call(client, messages, opts, providerConfig),
+            isRetriable,
+            { maxAttempts: 4 }
+          );
+          yield result;
+          fullText = result;
+        } else {
+          throw err;
+        }
+      }
+      // Note: token cost for streaming is approximate (recorded inside streamFn)
+      return fullText;
+    },
+  };
+}
+
 /** List all available providers (for /api/providers introspection). */
 function listProviders() {
   return Object.keys(PROVIDERS).map((name) => ({
@@ -308,4 +518,4 @@ function listProviders() {
   }));
 }
 
-module.exports = { createLlmCall, listProviders, offlineStub };
+module.exports = { createLlmCall, createLlmStream, listProviders, offlineStub };

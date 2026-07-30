@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createLlmCall, listProviders, offlineStub } = require('../src/agents/llm');
+const { createLlmCall, createLlmStream, listProviders, offlineStub } = require('../src/agents/llm');
 
 test('llm: offline stub returns planner JSON when system message identifies the planner', () => {
   const out = offlineStub(
@@ -92,4 +92,31 @@ test('llm: offline stub echoes the last user message when no keywords match', ()
   );
   const parsed = JSON.parse(out);
   assert.ok(parsed.result.includes('xyzzy'));
+});
+
+test('llm: createLlmStream returns an async generator for offline provider', async () => {
+  const { stream, provider } = createLlmStream({ provider: 'offline' });
+  assert.equal(provider, 'offline');
+  assert.equal(typeof stream, 'function');
+  const chunks = [];
+  for await (const chunk of stream(
+    [
+      { role: 'system', content: 'You are the Planner agent.' },
+      { role: 'user',   content: 'Task: do stuff' },
+    ],
+    { responseFormat: 'json' }
+  )) {
+    chunks.push(chunk);
+  }
+  assert.ok(chunks.length > 0, 'should yield at least one chunk');
+  // Offline stream yields the full stub output as a single chunk
+  const full = chunks.join('');
+  assert.ok(full.includes('do stuff'));
+});
+
+test('llm: createLlmStream throws for unknown provider', () => {
+  assert.throws(
+    () => createLlmStream({ provider: 'unknown-provider' }),
+    /Unknown LLM provider/
+  );
 });

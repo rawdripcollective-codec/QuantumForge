@@ -18,6 +18,8 @@
 const http = require('http');
 const express = require('express');
 const { WebSocketServer } = require('ws');
+const helmet = require('helmet');
+const cors = require('cors');
 const path = require('path');
 const config = require('./config/default.json');
 const { createKernel } = require('./src/agents/kernel');
@@ -28,6 +30,23 @@ const memory = require('./src/memory');
 const log = require('./src/lib/logger');
 
 const app = express();
+
+// ── Security middleware ───────────────────────────────────────────────────────
+app.use(helmet());
+
+// Allow the PWA (served statically) to call REST endpoints from the browser.
+// Restrict to localhost origins in production (unneeded on 127.0.0.1, but
+// harmless — change the origin list if you host the PWA on a different port).
+app.use(cors({
+  origin: [
+    'http://127.0.0.1:18789',
+    'http://localhost:18789',
+  ],
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type'],
+}));
+
+app.use(express.json({ limit: '1mb' }));
 app.use(express.json({ limit: '64kb' }));      // matches WS maxPayload below
 app.use(express.static(path.join(__dirname, 'public')));
 

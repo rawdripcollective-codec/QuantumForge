@@ -5,6 +5,13 @@
  * The llmCall function is injected at construction (see createKernel).
  * This keeps the kernel decoupled from provider choice — switching from
  * OpenAI to Anthropic or Ollama requires no kernel change.
+ *
+ * Feedback loops:
+ *   - Recent episodes are injected into the planner's context (soft memory).
+ *   - Recent mistakes are injected so the planner can avoid repeated errors.
+ *   - Last self-improve insights are injected so the planner benefits from
+ *     hourly analysis without needing an LLM call.
+ *   - Critic feedback is fed back into the solver on retry rounds.
  */
 
 'use strict';
@@ -17,6 +24,7 @@ const critic  = require('./critic');
 const memory  = require('../memory');
 const log     = require('../lib/logger');
 const cost    = require('../lib/cost');
+const selfImprove = require('../self-improve');
 const { createLlmCall } = require('./llm');
 
 const MAX_ROUNDS = config.agents.maxRounds;
@@ -43,9 +51,21 @@ function createKernel(providerOpts = {}) {
     async run(task, context = {}, onChunk = null) {
       const startUsd = cost.total();
 
-      // Enrich context with recent memory (so the planner can use prior runs)
+      // ── Feedback loop 1: recent episodes ──────────────────────────────────
       const recentEps = memory.recentEpisodes(5);
-      const enriched = { ...context, recentEpisodes: recentEps };
+
+      // ── Feedback loop 2: recent mistakes ──────────────────────────────────
+      const recentMistakes = memory.recentMistakes(5);
+
+      // ── Feedback loop 3: last self-improve insights ───────────────────────
+      const lastInsights = selfImprove.getLastInsights();
+
+      const enriched = {
+        ...context,
+        recentEpisodes: recentEps,
+        recentMistakes,
+        lastInsights,
+      };
 
       const emit = (type, payload) => {
         if (onChunk) onChunk({ type, ...payload });
@@ -73,15 +93,20 @@ function createKernel(providerOpts = {}) {
         while (!verdict.pass && round < MAX_ROUNDS) {
           round++;
           emit('solving', { step, round });
-          solverResult = await solver.solve(step, enriched, llmCall);
+          solverResult = await solver.solve(step, enriched, llmCall, emit);
 
           emit('critiquing', { step, solverResult });
           try {
             verdict = await critic.critique(step, solverResult, llmCall);
           } catch (err) {
             // If the critic errors, treat the result as passed (don't loop forever
-            // on a broken critic). The mistake is recorded in memory by the kernel caller.
+            // on a broken critic). Record the mistake so self-improve can analyse it.
             log.warn('kernel: critic error, accepting result', { err: err.message });
+            selfImprove.recordMistake({
+              type: 'error',
+              action: 'critic.critique',
+              detail: err.message,
+            });
             verdict = { pass: true, feedback: `[critic error: ${err.message}]` };
           }
           emit('verdict', { step, verdict });
@@ -95,8 +120,20 @@ function createKernel(providerOpts = {}) {
         // Clear per-step feedback so it doesn't bleed into subsequent steps
         delete enriched.criticFeedback;
 
+        // Record accepted/failed result for self-improvement
+        if (!verdict.pass) {
+          selfImprove.recordMistake({
+            type: 'step_rejected',
+            action: typeof step === 'object' ? step.action : String(step),
+            detail: verdict.feedback,
+          });
+        }
+
         results.push({ step, result: solverResult, rounds: round, accepted: verdict.pass });
       }
+
+      // Record the completed episode
+      memory.saveEpisode({ task, context, results });
 
       const summary = results.map((r) =>
         `Step ${r.step?.step ?? '?'}: ${r.result?.result ?? ''}`
